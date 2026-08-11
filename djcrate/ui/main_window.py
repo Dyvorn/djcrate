@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
         self.mini_player = None
 
         self.setup_ui()
+        QTimer.singleShot(600, self.load_trending_tracks)
         self.setup_connections()
         self.setup_shortcuts()
         self._restore_geometry()
@@ -311,6 +312,17 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.duration_combo)
         top_bar.addWidget(self.search_btn)
         layout.addLayout(top_bar)
+
+        self.search_header_box = QHBoxLayout()
+        self.search_header_box.setSpacing(6)
+        hdr_icon = QLabel()
+        hdr_icon.setPixmap(qta.icon("fa5s.fire", color=self.settings_manager.get('accentColor', '#FF5500')).pixmap(14, 14))
+        self.search_header_lbl = QLabel("TOP 10 TRENDING DJ COMMUNITY TRACKS TODAY")
+        self.search_header_lbl.setStyleSheet(f"font-size: 11px; font-weight: 800; color: {self.settings_manager.get('accentColor', '#FF5500')}; letter-spacing: 0.5px;")
+
+        self.search_header_box.addWidget(hdr_icon)
+        self.search_header_box.addWidget(self.search_header_lbl, 1)
+        layout.addLayout(self.search_header_box)
 
         self.search_scroll = QScrollArea()
         self.search_scroll.setWidgetResizable(True)
@@ -870,13 +882,35 @@ class MainWindow(QMainWindow):
 
     def _on_search_text_changed(self, text):
         if text.strip():
+            self.search_header_lbl.setText("SEARCH RESULTS")
             self._search_debounce_timer.start()
+        else:
+            self.load_trending_tracks()
+
+    def load_trending_tracks(self):
+        if self.search_input.text().strip():
+            return
+        self.search_header_lbl.setText("TOP 10 TRENDING DJ COMMUNITY TRACKS TODAY")
+        thread = SearchThread(
+            "Beatport Top 10 Dance Electronic Club Bangers",
+            source=self.source_combo.currentText(),
+            duration_filter="Any Duration",
+            max_results=10,
+            ytdlp_path=self.settings_manager.get('ytdlpPath', 'yt-dlp'),
+            cookies_path=self.settings_manager.get('cookiesPath', '')
+        )
+        thread.results_ready.connect(self.on_search_results)
+        thread.error_occurred.connect(self.on_search_error)
+        thread.start()
+        self._running_threads.append(thread)
 
     def perform_search(self):
         query = self.search_input.text().strip()
         if not query:
+            self.load_trending_tracks()
             return
         
+        self.search_header_lbl.setText(f"SEARCH RESULTS FOR '{query.upper()}'")
         self.search_btn.setEnabled(False)
         thread = SearchThread(
             query,
