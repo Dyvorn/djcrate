@@ -1073,7 +1073,16 @@ class LibraryTrackRow(QWidget):
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.MouseButton.LeftButton:
             if (event.position().toPoint() - self.drag_start_position).manhattanLength() > QApplication.startDragDistance():
-                self.parent_list.initiate_drag(self.track['path'])
+                selected_items = self.parent_list.selectedItems()
+                paths = []
+                for item in selected_items:
+                    t = item.data(Qt.ItemDataRole.UserRole)
+                    if t and t.get('path') and os.path.exists(t['path']):
+                        paths.append(t['path'])
+                if not paths and self.track.get('path') and os.path.exists(self.track['path']):
+                    paths = [self.track['path']]
+                if paths:
+                    self.parent_list.initiate_drag(paths)
         super().mouseMoveEvent(event)
 
     def mouseDoubleClickEvent(self, event):
@@ -1096,12 +1105,15 @@ class DraggableTrackList(QListWidget):
         self.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.itemDoubleClicked.connect(self.on_item_double_clicked)
 
-    def initiate_drag(self, track_path):
-        if not track_path or not os.path.exists(track_path):
+    def initiate_drag(self, track_paths):
+        if isinstance(track_paths, str):
+            track_paths = [track_paths]
+        urls = [QUrl.fromLocalFile(p) for p in track_paths if p and os.path.exists(p)]
+        if not urls:
             return
         drag = QDrag(self)
         mime_data = QMimeData()
-        mime_data.setUrls([QUrl.fromLocalFile(track_path)])
+        mime_data.setUrls(urls)
         drag.setMimeData(mime_data)
         drag.exec(Qt.DropAction.CopyAction)
 

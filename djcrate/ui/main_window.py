@@ -38,11 +38,11 @@ from djcrate.ui.widgets import (
     LoudnessMeterWidget, SearchResultCard, StarRatingWidget, LibraryTrackRow, LibraryHeaderWidget,
     DraggableTrackList, DroppableCrateTab, QueueItemRow, HistoryItemRow, TitleBar, FadingStackedWidget
 )
-from djcrate.ui.dialogs import SmartCrateDialog, LogDialog, MetadataEditorDialog
+from djcrate.ui.dialogs import SmartCrateDialog, LogDialog, MetadataEditorDialog, BulkMetadataEditorDialog, MixSplitterDialog
 from djcrate.ui.mini_player import MiniPlayerWindow
 from djcrate.workers import (
     SearchThread, ThumbnailDownloader, DownloadThread,
-    MetadataProbeThread, AnalysisThread, AutoTagThread, WaveformGeneratorThread
+    MetadataProbeThread, AnalysisThread, AutoTagThread, WaveformGeneratorThread, MixSplitterThread
 )
 from djcrate.updater import AutoUpdaterThread
 
@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self.artist_cache = {}
         self.search_results = []
         self._running_threads = []
+        self._sidebar_collapsed = False
 
         self.download_queue = []
         self.download_threads = {}
@@ -204,6 +205,14 @@ class MainWindow(QMainWindow):
         sb_layout.setContentsMargins(12, 16, 12, 16)
         sb_layout.setSpacing(6)
 
+        self.btn_toggle_sidebar = QPushButton()
+        self.btn_toggle_sidebar.setIcon(qta.icon("fa5s.bars", color="#A39E9A"))
+        self.btn_toggle_sidebar.setFixedSize(32, 32)
+        self.btn_toggle_sidebar.setStyleSheet("background: transparent; border: none;")
+        self.btn_toggle_sidebar.setToolTip("Toggle Collapsible Sidebar")
+        self.btn_toggle_sidebar.clicked.connect(self.toggle_sidebar)
+        sb_layout.addWidget(self.btn_toggle_sidebar)
+
         self.nav_btn_group = QButtonGroup(self)
 
         def create_nav_btn(icon_name, text, index):
@@ -336,10 +345,16 @@ class MainWindow(QMainWindow):
         self.btn_clean_lib.setIcon(qta.icon("fa5s.broom", color="#A39E9A"))
         self.btn_clean_lib.clicked.connect(self.clean_library)
 
+        self.btn_split_mix = QPushButton(" ✂️ Split Mix")
+        self.btn_split_mix.setIcon(qta.icon("fa5s.cut", color="#FF9800"))
+        self.btn_split_mix.setToolTip("Parse timestamps & split long audio DJ sets into tracks")
+        self.btn_split_mix.clicked.connect(self.open_mix_splitter)
+
         hdr_layout.addWidget(self.lib_search_input, 1)
         hdr_layout.addWidget(self.lib_sort_combo)
         hdr_layout.addWidget(self.btn_match_assistant)
         hdr_layout.addWidget(self.btn_analyze_lib)
+        hdr_layout.addWidget(self.btn_split_mix)
         hdr_layout.addWidget(self.btn_clean_lib)
         layout.addLayout(hdr_layout)
 
@@ -433,10 +448,16 @@ class MainWindow(QMainWindow):
         self.btn_smart_crate.setIcon(qta.icon("fa5s.magic", color="#E8E3DF"))
         self.btn_smart_crate.clicked.connect(self.add_smart_crate_dialog)
 
+        self.btn_export_crate = QPushButton(" Export M3U")
+        self.btn_export_crate.setIcon(qta.icon("fa5s.file-export", color="#E8E3DF"))
+        self.btn_export_crate.setToolTip("Export current crate as .m3u8 playlist for Rekordbox/Serato")
+        self.btn_export_crate.clicked.connect(lambda: self.export_current_crate())
+
         hdr.addWidget(hdr_lbl)
         hdr.addStretch()
         hdr.addWidget(self.btn_add_crate)
         hdr.addWidget(self.btn_smart_crate)
+        hdr.addWidget(self.btn_export_crate)
         layout.addLayout(hdr)
 
         self.crate_tab_bar = QHBoxLayout()
@@ -648,12 +669,39 @@ class MainWindow(QMainWindow):
         ctrls.addWidget(self.stop_btn)
         top_row.addLayout(ctrls)
 
-        # Right Meter & Volume
+        # Right Meter, Pitch & Volume
         right = QHBoxLayout()
         right.setSpacing(8)
 
         self.loudness_meter = LoudnessMeterWidget()
         right.addWidget(self.loudness_meter)
+
+        pitch_box = QHBoxLayout()
+        pitch_box.setSpacing(4)
+        pitch_lbl = QLabel("PITCH")
+        pitch_lbl.setStyleSheet("color: #8A8580; font-size: 10px; font-weight: bold;")
+
+        self.pitch_slider = QSlider(Qt.Orientation.Horizontal)
+        self.pitch_slider.setRange(-20, 20)
+        self.pitch_slider.setValue(0)
+        self.pitch_slider.setFixedWidth(70)
+        self.pitch_slider.setToolTip("Tempo adjustment (-20% to +20%)")
+        self.pitch_slider.valueChanged.connect(self.on_pitch_changed)
+
+        self.pitch_val_lbl = QLabel("0.0%")
+        self.pitch_val_lbl.setStyleSheet("color: #00E5FF; font-size: 10px; font-weight: bold; font-family: monospace;")
+        self.pitch_val_lbl.setFixedWidth(40)
+
+        self.btn_reset_pitch = QPushButton("RST")
+        self.btn_reset_pitch.setFixedSize(28, 18)
+        self.btn_reset_pitch.setStyleSheet("background: #2A2725; color: #A39E9A; font-size: 9px; font-weight: bold; border-radius: 3px;")
+        self.btn_reset_pitch.clicked.connect(lambda: self.pitch_slider.setValue(0))
+
+        pitch_box.addWidget(pitch_lbl)
+        pitch_box.addWidget(self.pitch_slider)
+        pitch_box.addWidget(self.pitch_val_lbl)
+        pitch_box.addWidget(self.btn_reset_pitch)
+        right.addLayout(pitch_box)
 
         self.vol_icon = QLabel()
         self.vol_icon.setPixmap(qta.icon("fa5s.volume-up", color="#A39E9A").pixmap(16, 16))
@@ -1134,6 +1182,13 @@ class MainWindow(QMainWindow):
         return f"{m}:{s:02d}"
 
     def show_track_context_menu(self, track, pos):
+        selected_items = self.track_list.selectedItems()
+        selected_paths = []
+        for item in selected_items:
+            t = item.data(Qt.ItemDataRole.UserRole)
+            if t and t.get('path') and os.path.exists(t['path']):
+                selected_paths.append(t['path'])
+
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu { background-color: #212133; color: #E8E3DF; border: 1px solid #3B3633; padding: 4px; border-radius: 4px; }
@@ -1141,32 +1196,129 @@ class MainWindow(QMainWindow):
         """)
         analyze_track = menu.addAction("Analyze BPM & Key Tags")
         edit_meta = menu.addAction("Edit Metadata Tags...")
+        bulk_edit = None
+        if len(selected_paths) > 1:
+            bulk_edit = menu.addAction(f"Bulk Edit {len(selected_paths)} Selected Tracks...")
+
         reveal = menu.addAction("Reveal in File Explorer")
         delete = menu.addAction("Delete Track File")
 
         action = menu.exec(pos)
         if action == analyze_track:
+            targets = selected_paths if selected_paths else [track['path']]
             self._analysis_in_progress = True
-            analysis_thread = AnalysisThread([track['path']])
+            analysis_thread = AnalysisThread(targets)
             analysis_thread.completed.connect(self.on_analysis_track_completed)
             analysis_thread.all_finished.connect(self.on_analysis_finished)
             analysis_thread.start()
             self._running_threads.append(analysis_thread)
-            self.toast_manager.show_toast(f"Analyzing {track['title']}...", toast_type="info")
+            self.toast_manager.show_toast(f"Analyzing {len(targets)} track(s)...", toast_type="info")
         elif action == edit_meta:
             dlg = MetadataEditorDialog(track['path'], self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
+                self.refresh_library()
+        elif bulk_edit and action == bulk_edit:
+            dlg = BulkMetadataEditorDialog(selected_paths, self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self.toast_manager.show_toast(f"Updated metadata for {len(selected_paths)} tracks!", toast_type="success")
                 self.refresh_library()
         elif action == reveal:
             if sys.platform == 'win32':
                 subprocess.run(['explorer', '/select,', os.path.normpath(track['path'])])
         elif action == delete:
-            if QMessageBox.question(self, "Delete Track", f"Delete {track['title']} from disk?") == QMessageBox.StandardButton.Yes:
-                try:
-                    os.remove(track['path'])
-                    self.refresh_library()
-                except Exception as e:
-                    self.toast_manager.show_toast(f"Error deleting file: {e}", toast_type="error")
+            targets = selected_paths if selected_paths else [track['path']]
+            if QMessageBox.question(self, "Delete Track(s)", f"Delete {len(targets)} selected track(s) from disk?") == QMessageBox.StandardButton.Yes:
+                for p in targets:
+                    try:
+                        os.remove(p)
+                    except Exception as e:
+                        logger.error(f"Error deleting {p}: {e}")
+                self.refresh_library()
+
+    def toggle_sidebar(self):
+        self._sidebar_collapsed = not self._sidebar_collapsed
+        if self._sidebar_collapsed:
+            self.sidebar.setFixedWidth(64)
+            self.btn_toggle_sidebar.setIcon(qta.icon("fa5s.angle-double-right", color="#A39E9A"))
+            self.btn_search.setText("")
+            self.btn_library.setText("")
+            self.btn_crates.setText("")
+            self.btn_queue.setText("")
+            self.btn_settings.setText("")
+            self.btn_mini_player.setText("")
+        else:
+            self.sidebar.setFixedWidth(200)
+            self.btn_toggle_sidebar.setIcon(qta.icon("fa5s.angle-double-left", color="#A39E9A"))
+            self.btn_search.setText("  Search")
+            self.btn_library.setText("  Library")
+            self.btn_crates.setText("  Crates")
+            self.btn_queue.setText("  Queue")
+            self.btn_settings.setText("  Settings")
+            self.btn_mini_player.setText(" Mini Player")
+
+    def on_pitch_changed(self, val):
+        rate = 1.0 + (val / 100.0)
+        self.media_player.setPlaybackRate(rate)
+        sign = "+" if val > 0 else ""
+        self.pitch_val_lbl.setText(f"{sign}{val:.1f}%")
+
+    def export_current_crate(self, crate_name=None):
+        target_crate = crate_name or self.active_crate
+        if not target_crate:
+            self.toast_manager.show_toast("Select a crate to export!", toast_type="info")
+            return
+
+        crates = self.settings_manager.get('crates', {})
+        paths = crates.get(target_crate, [])
+        if not paths:
+            self.toast_manager.show_toast(f"Crate '{target_crate}' is empty.", toast_type="info")
+            return
+
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, f"Export Crate '{target_crate}'", f"{target_crate}.m3u8", "M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)"
+        )
+        if save_path:
+            try:
+                with open(save_path, 'w', encoding='utf-8') as f:
+                    f.write("#EXTM3U\n")
+                    for p in paths:
+                        if os.path.exists(p):
+                            t = self._find_library_track(p)
+                            title = t.get('title', os.path.basename(p)) if t else os.path.basename(p)
+                            artist = t.get('artist', 'Unknown') if t else 'Unknown'
+                            dur = t.get('durationSecs', 0) if t else 0
+                            f.write(f"#EXTINF:{int(dur)},{artist} - {title}\n")
+                            f.write(f"{os.path.abspath(p)}\n")
+                self.toast_manager.show_toast(f"Exported crate '{target_crate}' to {os.path.basename(save_path)}!", toast_type="success")
+            except Exception as e:
+                self.toast_manager.show_toast(f"Failed to export playlist: {e}", toast_type="error")
+
+    def open_mix_splitter(self):
+        dlg = MixSplitterDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            input_file, tracks_info = dlg.get_parsed_data()
+            if not input_file or not os.path.exists(input_file):
+                self.toast_manager.show_toast("Invalid audio file selected.", toast_type="error")
+                return
+            if not tracks_info:
+                self.toast_manager.show_toast("No valid timestamps parsed.", toast_type="error")
+                return
+
+            out_dir = os.path.join(self.settings_manager.get('musicPath'), "Splits")
+            self.toast_manager.show_toast(f"Splitting mix into {len(tracks_info)} tracks...", toast_type="info")
+
+            splitter_thread = MixSplitterThread(
+                input_file, tracks_info, out_dir,
+                ffmpeg_path=self.settings_manager.get('ffmpegPath', 'ffmpeg'),
+                parent=self
+            )
+            splitter_thread.all_finished.connect(self._on_mix_split_finished)
+            splitter_thread.start()
+            self._running_threads.append(splitter_thread)
+
+    def _on_mix_split_finished(self, output_paths):
+        self.toast_manager.show_toast(f"Mix split into {len(output_paths)} tracks!", toast_type="success")
+        self.refresh_library()
 
     def clean_library(self):
         missing_count = 0
@@ -1284,10 +1436,13 @@ class MainWindow(QMainWindow):
             QMenu { background-color: #212133; color: #E8E3DF; border: 1px solid #3B3633; padding: 4px; border-radius: 4px; }
             QMenu::item:selected { background-color: #3B3633; }
         """)
+        export_action = menu.addAction("Export Crate to M3U Playlist...")
         rename_action = menu.addAction("Rename Crate")
         delete_action = menu.addAction("Delete Crate")
         action = menu.exec(pos)
-        if action == delete_action:
+        if action == export_action:
+            self.export_current_crate(crate_name)
+        elif action == delete_action:
             if QMessageBox.question(self, "Delete Crate", f"Delete crate '{crate_name}'?") == QMessageBox.StandardButton.Yes:
                 self.settings_manager.db.delete_crate(crate_name)
                 self.toast_manager.show_toast(f"Deleted crate: {crate_name}", toast_type="info")

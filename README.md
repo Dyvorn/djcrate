@@ -6,14 +6,18 @@
 
 ## ✨ Features
 
-- **Search & Discover:** Quickly search YouTube and SoundCloud for tracks, remixes, and sets.
+- **Search & Discover:** Quickly search YouTube, SoundCloud, and Bandcamp for tracks, remixes, and sets.
 - **Fast Downloading:** Powered by `yt-dlp` for high-quality, reliable audio extraction.
-- **Advanced Metadata Engine:** Automatically hits the iTunes API to download high-res cover art and embeds official ID3 tags (Artist, Title, Album) directly into the file.
+- **Advanced Metadata Engine:** Automatically hits iTunes and Beatport APIs to download high-res cover art and embed official ID3 tags (Artist, Title, Album, Genre, Release Year) directly into audio files.
+- **DJ Software Drag & Drop:** Drag tracks directly from DJ Crate into **Serato DJ**, **Rekordbox**, **Traktor**, or Windows Explorer.
+- **Playlist Export:** Export manual and smart crates as standard `.m3u8` playlists.
+- **Mix Splitter (Timestamp Parser):** Paste tracklist timestamps to automatically cut long DJ mixes into tagged individual tracks via `FFmpeg`.
+- **Bulk Tag Editor:** Select multiple tracks and edit Artist, Album, Genre, and Year in a single batch operation.
 - **SQLite Database:** Lightning-fast library management, smart crate queries, and reliable download history backing.
-- **Waveform & Key Analysis:** Uses `ffmpeg` and `librosa` to analyze BPM, Camelot Key, and generate waveforms to preview drops instantly.
-- **Smart Crates:** Automatically organize your library based on BPM, Key, or Title rules.
-- **Mini Player:** A compact overlay player to listen to tracks while you do other tasks.
-- **Theming:** Beautiful, customizable PyQt6 user interface with dynamic theming.
+- **Waveform, Key & Pitch Controls:** Uses `ffmpeg` and `librosa` to analyze BPM, Camelot Key, and generate waveforms. Includes a preview pitch slider (-20% to +20%) to test transitions.
+- **Smart Crates:** Automatically organize your library based on BPM, Key, Genre, or Title rules.
+- **Collapsible Sidebar & Mini Player:** Compact overlay player and collapsible icon-only sidebar for small DJ laptop screens.
+- **Dynamic Theming:** Beautiful, customizable PyQt6 user interface (Dark, OLED Black, Soft Slate) with dynamic accent color presets.
 
 ---
 

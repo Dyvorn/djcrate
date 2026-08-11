@@ -151,11 +151,11 @@ class ThumbnailDownloader(QThread):
         if not self.url:
             return
         try:
-            temp_dir = os.path.join(tempfile.gettempdir(), 'dj_crate_thumbs')
-            os.makedirs(temp_dir, exist_ok=True)
-            local_path = os.path.join(temp_dir, f"{self.video_id}.jpg")
+            cache_dir = os.path.join(os.path.expanduser('~'), '.djcrate_cache', 'thumbs')
+            os.makedirs(cache_dir, exist_ok=True)
+            local_path = os.path.join(cache_dir, f"{self.video_id}.jpg")
 
-            if not os.path.exists(local_path):
+            if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
                 req = urllib.request.Request(self.url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=5) as response:
                     with open(local_path, 'wb') as f:

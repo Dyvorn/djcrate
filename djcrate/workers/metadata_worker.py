@@ -191,19 +191,38 @@ class AutoTagThread(QThread):
                 
                 query = f"{artist_str} {title_str}".strip()
                 url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query)}&entity=song&limit=1"
-                resp = requests.get(url, timeout=5).json()
-                
-                if not resp.get('results'):
-                    self.error_occurred.emit(path, "No match found on iTunes")
-                    continue
-                    
-                track_info = resp['results'][0]
-                genre = track_info.get('primaryGenreName', '')
-                year = track_info.get('releaseDate', '')[:4]
-                art_url = track_info.get('artworkUrl100', '').replace('100x100bb.jpg', '600x600bb.jpg')
-                fetch_artist = track_info.get('artistName', '')
-                fetch_title = track_info.get('trackName', '')
-                fetch_album = track_info.get('collectionName', '')
+                resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5).json()
+
+                genre, year, art_url = "", "", ""
+                fetch_artist, fetch_title, fetch_album = "", "", ""
+
+                if resp.get('results'):
+                    track_info = resp['results'][0]
+                    genre = track_info.get('primaryGenreName', '')
+                    year = track_info.get('releaseDate', '')[:4]
+                    art_url = track_info.get('artworkUrl100', '').replace('100x100bb.jpg', '600x600bb.jpg')
+                    fetch_artist = track_info.get('artistName', '')
+                    fetch_title = track_info.get('trackName', '')
+                    fetch_album = track_info.get('collectionName', '')
+                else:
+                    self.progress.emit(path, "Searching Beatport catalog...")
+                    bp_url = f"https://www.beatport.com/api/v4/catalog/search?q={urllib.parse.quote(query)}&per_page=1"
+                    try:
+                        bp_resp = requests.get(bp_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5).json()
+                        if bp_resp.get('tracks'):
+                            bp_track = bp_resp['tracks'][0]
+                            fetch_title = bp_track.get('name', '')
+                            fetch_artist = ", ".join([a.get('name', '') for a in bp_track.get('artists', [])])
+                            fetch_album = bp_track.get('release', {}).get('name', '')
+                            genre = bp_track.get('genre', {}).get('name', '')
+                            year = bp_track.get('publish_date', '')[:4]
+                            art_url = bp_track.get('release', {}).get('image', {}).get('uri', '')
+                        else:
+                            self.error_occurred.emit(path, "No match found on iTunes or Beatport")
+                            continue
+                    except Exception:
+                        self.error_occurred.emit(path, "No match found on iTunes or Beatport")
+                        continue
                 
                 img_data = None
                 if art_url:
