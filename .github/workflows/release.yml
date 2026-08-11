@@ -17,19 +17,27 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Read version from package
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "from djcrate import __version__; print(__version__)"
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip --progress-bar off
-          pip install pyinstaller --progress-bar off
+          pip install pyinstaller Pillow --progress-bar off
           if (Test-Path "requirements.txt") { pip install -r requirements.txt --progress-bar off }
 
-      - name: Generate Icon (if needed)
+      - name: Generate App Icon
+        shell: pwsh
         run: |
           python -c "
           import os
@@ -38,21 +46,42 @@ jobs:
           if not os.path.exists('assets/icon.ico'):
               img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
               d = ImageDraw.Draw(img)
-              d.ellipse((10, 10, 246, 246), fill=(255, 85, 0))
+              d.ellipse((10, 10, 246, 246), fill=(196, 125, 99))
+              d.ellipse((70, 70, 186, 186), fill=(20, 18, 18))
+              d.ellipse((100, 100, 156, 156), fill=(196, 125, 99))
               img.save('assets/icon.ico')
+          print('Icon ready.')
           "
 
       - name: Build Executable with PyInstaller
         run: |
           pyinstaller build.spec
 
-      - name: Install Inno Setup
+      - name: Verify build output
+        shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
+          if (-not (Test-Path "dist\DJ Crate\DJ Crate.exe")) {
+            Write-Error "PyInstaller build failed — DJ Crate.exe not found in dist/"
+            exit 1
+          }
+          Write-Host "Build OK: dist\DJ Crate\DJ Crate.exe"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
 
       - name: Compile Installer with Inno Setup
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" djcrate_installer.iss
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "Releases\DJ_Crate_Installer.exe")) {
+            Write-Error "Inno Setup failed — DJ_Crate_Installer.exe not found in Releases/"
+            exit 1
+          }
+          $size = (Get-Item "Releases\DJ_Crate_Installer.exe").Length / 1MB
+          Write-Host "Installer OK: $([math]::Round($size, 1)) MB"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -62,49 +91,40 @@ jobs:
           body: |
             ## 🎛️ DJ Crate ${{ github.ref_name }}
 
-            Welcome to **DJ Crate ${{ github.ref_name }}**! This release brings professional DJ software integration, mix splitting tools, crate playlist export, and enhanced metadata controls.
+            ### What's new
 
-            ---
+            > _See the auto-generated release notes below for the full commit list._
 
-            ### 🚀 What's New in this Release
+            ### ✨ v0.3.1 — Quality Pass
 
-            #### 🎧 Direct DJ Software Drag & Drop
-            - Drag single or multiple tracks directly into **Serato DJ**, **Rekordbox**, **Traktor**, or Windows Explorer.
-
-            #### ✂️ Mix Splitter (Timestamp Parser)
-            - Parse tracklist timestamps (e.g. `00:00 Intro`, `03:45 Song`) to automatically cut long audio DJ mixes into tagged individual tracks via `FFmpeg`.
-
-            #### 📁 Crate M3U / M3U8 Playlist Export
-            - Export manual and smart crates to standard `.m3u8` playlists for seamless import into DJ software.
-
-            #### 🎵 Beatport Catalog Integration
-            - Automatic Beatport search fallback for electronic, techno, house, and underground music metadata & cover art when iTunes returns no results.
-
-            #### 🏷️ Bulk Metadata Tag Editor
-            - Multi-select tracks in your library and batch-edit Artist, Album, Genre, and Release Year in a single dialog.
-
-            #### 🎚️ Pitch / Tempo Slider & Collapsible Sidebar
-            - **Pitch Fader**: Test track speed adjustments (-20% to +20%) with reset button directly on the player bar.
-            - **Collapsible Sidebar**: Switch between full text mode and icon-only mode to save horizontal space on laptop screens.
-
-            #### ⚡ Persistent Artwork Caching
-            - Artwork cached persistently in `~/.djcrate_cache/thumbs/` for faster search performance across application launches.
+            - **Fixed** clipboard HUD download crashing with `TypeError` (missing `duration` arg)
+            - **Fixed** Gig Matcher crashing on any library that had BPM data analysed
+            - **Fixed** Metadata Editor only guessing tags from filename — now reads actual embedded ID3/FLAC/MP4 tags
+            - **Fixed** pitch fader label showing `+5.0%` instead of `+5%`
+            - **Performance** Queue rows now update in-place instead of being destroyed and recreated on every download tick
+            - **UX** Clipboard HUD now slides in smoothly from the bottom-right corner (300ms ease-out)
+            - **UX** Gig Matcher results are now colour-coded by match quality (🟢 green / 🟡 yellow / 🔴 red)
+            - **UX** Clipboard downloads now log a meaningful title (e.g. `YouTube/dQw4w9WgXcQ`) instead of "Quick Capture Track"
+            - **DRY** Extracted shared helpers for track row creation, analysis thread launch, and context menu styling
+            - **Docs** Added module/class docstrings to all workers and companion widgets
 
             ---
 
             ### ⚠️ Windows Defender SmartScreen Notice
-            > **Note for Windows Users:** Because DJ Crate is open-source indie software and not signed with an EV Code Signing Certificate, Windows Defender SmartScreen may label it as an "Unrecognized App".
-            > 
-            > **How to install safely:**
-            > 1. Run `DJ_Crate_Installer.exe`.
-            > 2. Click **"More info"**.
-            > 3. Click **"Run anyway"**.
+
+            Because DJ Crate is open-source indie software not signed with an EV Code Signing Certificate,
+            Windows may show an "Unrecognized App" warning.
+
+            **How to install safely:**
+            1. Run `DJ_Crate_Installer.exe`
+            2. Click **"More info"**
+            3. Click **"Run anyway"**
 
             ---
 
-            ### 🛠️ Installation Instructions
+            ### 🛠️ Installation
             1. Download **`DJ_Crate_Installer.exe`** from the Assets section below.
-            2. Run the installer to install or upgrade DJ Crate on your system.
+            2. Run the installer. DJ Crate will be added to your Start Menu and optionally your Desktop.
           generate_release_notes: true
           draft: false
         env:

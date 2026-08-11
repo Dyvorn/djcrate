@@ -4,3 +4,6 @@ qtawesome
 mutagen
 yt-dlp
 requests
+librosa
+numpy
+scipy

@@ -1,4 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+# DJ Crate build.spec — PyInstaller configuration for v0.3.1
+# Generates a one-folder Windows executable bundled via COLLECT.
+# Inno Setup then wraps the dist/ folder into a single installer exe.
+
+import os
 
 block_cipher = None
 
@@ -8,10 +13,32 @@ a = Analysis(
     binaries=[],
     datas=[],
     hiddenimports=[
-        'djcrate', 
+        'djcrate',
+        'djcrate.app',
+        'djcrate.config',
+        'djcrate.database',
+        'djcrate.logger',
+        'djcrate.utils',
+        'djcrate.obs_overlay',
+        'djcrate.serato',
+        'djcrate.updater',
+        'djcrate.ui',
+        'djcrate.workers',
         'qtawesome',
         'mutagen',
-        'PyQt6'
+        'mutagen.id3',
+        'mutagen.flac',
+        'mutagen.wave',
+        'mutagen.mp4',
+        'PyQt6',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PyQt6.QtMultimedia',
+        'numpy',
+        'scipy',
+        'librosa',
+        'requests',
     ],
     hookspath=[],
     hooksconfig={},
@@ -35,7 +62,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False, # Set to False to hide terminal window on launch
+    console=False,  # No terminal window on launch
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

@@ -127,13 +127,56 @@ class MetadataEditorDialog(QDialog):
         self.load_current_metadata()
 
     def load_current_metadata(self):
+        """Pre-populate fields from embedded audio tags; fall back to filename parsing."""
+        # Attempt to read existing embedded tags via mutagen
+        try:
+            import mutagen
+            audio = mutagen.File(self.track_path)
+            if audio and audio.tags:
+                tags = audio.tags
+                # Covers ID3 (MP3/WAV), Vorbis (FLAC/OGG), and MP4 comment frames
+                def _first(tag_obj):
+                    """Return the first string value from a tag frame or list."""
+                    if tag_obj is None:
+                        return ""
+                    if hasattr(tag_obj, 'text'):
+                        return str(tag_obj.text[0]).strip()
+                    if isinstance(tag_obj, list):
+                        return str(tag_obj[0]).strip()
+                    return str(tag_obj).strip()
+
+                title = (
+                    _first(tags.get('TIT2')) or _first(tags.get('title')) or
+                    _first(tags.get('\xa9nam'))  # MP4
+                )
+                artist = (
+                    _first(tags.get('TPE1')) or _first(tags.get('artist')) or
+                    _first(tags.get('\xa9ART'))  # MP4
+                )
+                album = (
+                    _first(tags.get('TALB')) or _first(tags.get('album')) or
+                    _first(tags.get('\xa9alb'))  # MP4
+                )
+                if title:
+                    self.title_input.setText(title)
+                if artist:
+                    self.artist_input.setText(artist)
+                if album:
+                    self.album_input.setText(album)
+                if title or artist:
+                    return  # Tags found — no need for filename fallback
+        except Exception:
+            pass  # mutagen not available or corrupt file — fall through
+
+        # Filename fallback: "Artist - Title" convention
         filename = os.path.basename(self.track_path).rsplit('.', 1)[0]
         if ' - ' in filename:
             art, tit = filename.split(' - ', 1)
-            self.artist_input.setText(art)
-            self.title_input.setText(tit)
+            self.artist_input.setText(art.strip())
+            self.title_input.setText(tit.strip())
         else:
             self.title_input.setText(filename)
+
 
     def save_metadata(self):
         try:

@@ -47,7 +47,7 @@ from djcrate.workers import (
 from djcrate.updater import AutoUpdaterThread
 from djcrate.serato import SeratoCrateWriter
 from djcrate.obs_overlay import ObsOverlayWriter
-from djcrate.ui.clipboard_widget import ClipboardGrabberWidget
+from djcrate.ui.clipboard_widget import ClipboardGrabberWidget, _derive_title_from_url
 from djcrate.ui.gig_matcher_widget import GigMatcherWidget
 
 class MainWindow(QMainWindow):
@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.artist_cache = {}
         self.search_results = []
         self._running_threads = []
+        self._queue_rows: dict = {}  # url -> QueueItemRow; for in-place progress updates
         self._sidebar_collapsed = False
         self.gig_matcher = None
 
@@ -435,13 +436,26 @@ class MainWindow(QMainWindow):
 
         self._analysis_in_progress = True
         self.btn_analyze_lib.setEnabled(False)
-        self.toast_manager.show_toast(f"Starting BPM & Key analysis for {len(unanalyzed)} tracks...", toast_type="info")
+        self._run_analysis_thread(unanalyzed)
 
-        analysis_thread = AnalysisThread(unanalyzed)
+    def _run_analysis_thread(self, targets: list):
+        """
+        Create and start an ``AnalysisThread`` for the given file paths.
+
+        Centralises the thread-start boilerplate that was previously duplicated
+        between ``start_library_analysis`` and the context-menu analysis path.
+        Also ensures the ``_analysis_in_progress`` guard is respected.
+        """
+        if not targets:
+            return
+        self._analysis_in_progress = True
+        analysis_thread = AnalysisThread(targets)
         analysis_thread.completed.connect(self.on_analysis_track_completed)
         analysis_thread.all_finished.connect(self.on_analysis_finished)
+        analysis_thread.finished.connect(lambda t=analysis_thread: self._prune_thread(t))
         analysis_thread.start()
         self._running_threads.append(analysis_thread)
+        self.toast_manager.show_toast(f"Analyzing {len(targets)} track(s)...", toast_type="info")
 
     def on_analysis_track_completed(self, path, data):
         self.settings_manager.set_track_meta(path, data)
@@ -985,6 +999,7 @@ class MainWindow(QMainWindow):
         )
         dl_thread.progress.connect(self.on_download_progress)
         dl_thread.completed.connect(self.on_download_completed)
+        dl_thread.finished.connect(lambda t=dl_thread: self._prune_thread(t))
         dl_thread.start()
         self._running_threads.append(dl_thread)
         self.download_threads[url] = dl_thread
@@ -994,7 +1009,7 @@ class MainWindow(QMainWindow):
         if url in self.search_cards:
             self.search_cards[url].set_downloading()
 
-        # Add to download queue page
+        # Add to download queue page and track the row for in-place updates
         queue_data = {'url': url, 'title': title, 'status': 'downloading', 'progress': 0}
         item = QListWidgetItem(self.queue_list)
         row = QueueItemRow(queue_data, accent_color=self.settings_manager.get('accentColor', '#FF5500'))
@@ -1002,6 +1017,7 @@ class MainWindow(QMainWindow):
         item.setSizeHint(row.sizeHint())
         item.setData(Qt.ItemDataRole.UserRole, url)
         self.queue_list.setItemWidget(item, row)
+        self._queue_rows[url] = row
 
     def _cancel_download(self, url):
         if url in self.download_threads:
@@ -1012,16 +1028,9 @@ class MainWindow(QMainWindow):
         if url in self.search_cards:
             self.search_cards[url].update_progress(pct, speed, eta)
 
-        # Update queue list item
-        for i in range(self.queue_list.count()):
-            item = self.queue_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == url:
-                queue_data = {'url': url, 'title': '', 'status': 'downloading', 'progress': pct}
-                row = QueueItemRow(queue_data, accent_color=self.settings_manager.get('accentColor', '#FF5500'))
-                row.cancel_requested.connect(self._cancel_download)
-                item.setSizeHint(row.sizeHint())
-                self.queue_list.setItemWidget(item, row)
-                break
+        # Update queue row in-place (avoids widget recreation on every % tick)
+        if url in self._queue_rows:
+            self._queue_rows[url].update_progress(pct)
 
     def on_download_completed(self, url, ok, result):
         # Update search card
@@ -1031,17 +1040,23 @@ class MainWindow(QMainWindow):
             else:
                 self.search_cards[url].set_available()
 
-        # Update queue list item
-        for i in range(self.queue_list.count()):
-            item = self.queue_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == url:
-                status = 'completed' if ok else 'failed'
-                title = os.path.basename(result) if ok else result
-                queue_data = {'url': url, 'title': title, 'status': status, 'progress': 100 if ok else 0}
-                row = QueueItemRow(queue_data, accent_color=self.settings_manager.get('accentColor', '#FF5500'))
-                item.setSizeHint(row.sizeHint())
-                self.queue_list.setItemWidget(item, row)
-                break
+        # Update queue list item to reflect final status
+        if url in self._queue_rows:
+            queue_data = {
+                'url': url,
+                'title': os.path.basename(result) if ok else result,
+                'status': 'completed' if ok else 'failed',
+                'progress': 100 if ok else 0
+            }
+            new_row = QueueItemRow(queue_data, accent_color=self.settings_manager.get('accentColor', '#FF5500'))
+            # Find the list item and swap the widget
+            for i in range(self.queue_list.count()):
+                item = self.queue_list.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) == url:
+                    item.setSizeHint(new_row.sizeHint())
+                    self.queue_list.setItemWidget(item, new_row)
+                    break
+            del self._queue_rows[url]
 
         # Clean up thread reference
         self.download_threads.pop(url, None)
@@ -1161,15 +1176,34 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(self.track_list)
             item.setData(Qt.ItemDataRole.UserRole, track)
             match_info = matches_map.get(track['path']) if is_matching else None
-            row = LibraryTrackRow(
+            row = self._add_track_row_to_list(
                 self.track_list, track, item,
                 is_playing=(self.player_track and self.player_track['path'] == track['path']),
-                match_info=match_info,
-                accent_color=self.settings_manager.get('accentColor', '#FF5500')
+                match_info=match_info
             )
             row.rating_changed.connect(self.on_track_rating_changed)
-            item.setSizeHint(row.sizeHint())
-            self.track_list.setItemWidget(item, row)
+
+    def _add_track_row_to_list(self, list_widget, track, item, is_playing=False, match_info=None):
+        """
+        Create and attach a ``LibraryTrackRow`` widget to ``list_widget``.
+
+        Centralises the boilerplate that was previously duplicated across
+        ``filter_library``, ``_on_crate_selected``, and ``_on_smart_crate_selected``.
+
+        Returns
+        -------
+        LibraryTrackRow
+            The created row widget, so callers can connect additional signals.
+        """
+        row = LibraryTrackRow(
+            list_widget, track, item,
+            is_playing=is_playing,
+            match_info=match_info,
+            accent_color=self.settings_manager.get('accentColor', '#FF5500')
+        )
+        item.setSizeHint(row.sizeHint())
+        list_widget.setItemWidget(item, row)
+        return row
 
     def preview_track(self, track):
         if not track or not os.path.exists(track['path']):
@@ -1227,8 +1261,12 @@ class MainWindow(QMainWindow):
             self.gig_matcher.show()
 
     def quick_download_url(self, url, fmt):
-        self.toast_manager.show_toast(f"Quick Capture download started ({fmt.upper()})...", toast_type="info")
-        self.start_download(url, "Quick Capture Track", fmt)
+        """Handle a quick download triggered from the clipboard HUD."""
+        title = _derive_title_from_url(url)
+        self.toast_manager.show_toast(
+            f"Quick Capture download started ({fmt.upper()})...", toast_type="info"
+        )
+        self.start_download(url, title, 0, fmt)
 
     def on_waveform_ready(self, file_path, img_path):
         if self.player_track and self.player_track['path'] == file_path:
@@ -1311,17 +1349,15 @@ class MainWindow(QMainWindow):
 
     def show_track_context_menu(self, track, pos):
         selected_items = self.track_list.selectedItems()
-        selected_paths = []
-        for item in selected_items:
-            t = item.data(Qt.ItemDataRole.UserRole)
-            if t and t.get('path') and os.path.exists(t['path']):
-                selected_paths.append(t['path'])
+        selected_paths = [
+            item.data(Qt.ItemDataRole.UserRole)['path']
+            for item in selected_items
+            if item.data(Qt.ItemDataRole.UserRole) and
+               os.path.exists(item.data(Qt.ItemDataRole.UserRole).get('path', ''))
+        ]
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu { background-color: #212133; color: #E8E3DF; border: 1px solid #3B3633; padding: 4px; border-radius: 4px; }
-            QMenu::item:selected { background-color: #3B3633; }
-        """)
+        menu.setStyleSheet(self._context_menu_style())
         analyze_track = menu.addAction("Analyze BPM & Key Tags")
         edit_meta = menu.addAction("Edit Metadata Tags...")
         bulk_edit = None
@@ -1334,13 +1370,7 @@ class MainWindow(QMainWindow):
         action = menu.exec(pos)
         if action == analyze_track:
             targets = selected_paths if selected_paths else [track['path']]
-            self._analysis_in_progress = True
-            analysis_thread = AnalysisThread(targets)
-            analysis_thread.completed.connect(self.on_analysis_track_completed)
-            analysis_thread.all_finished.connect(self.on_analysis_finished)
-            analysis_thread.start()
-            self._running_threads.append(analysis_thread)
-            self.toast_manager.show_toast(f"Analyzing {len(targets)} track(s)...", toast_type="info")
+            self._run_analysis_thread(targets)
         elif action == edit_meta:
             dlg = MetadataEditorDialog(track['path'], self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -1388,7 +1418,22 @@ class MainWindow(QMainWindow):
         rate = 1.0 + (val / 100.0)
         self.media_player.setPlaybackRate(rate)
         sign = "+" if val > 0 else ""
-        self.pitch_val_lbl.setText(f"{sign}{val:.1f}%")
+        self.pitch_val_lbl.setText(f"{sign}{val}%")
+
+    def _context_menu_style(self) -> str:
+        """Return the shared QSS string for context menus."""
+        return (
+            "QMenu { background-color: #212133; color: #E8E3DF; "
+            "border: 1px solid #3B3633; padding: 4px; border-radius: 4px; } "
+            "QMenu::item:selected { background-color: #3B3633; }"
+        )
+
+    def _prune_thread(self, thread):
+        """Remove a finished thread from ``_running_threads`` to prevent memory leaks."""
+        try:
+            self._running_threads.remove(thread)
+        except ValueError:
+            pass
 
     def export_current_crate(self, crate_name=None):
         target_crate = crate_name or self.active_crate
@@ -1512,12 +1557,7 @@ class MainWindow(QMainWindow):
                 if track:
                     item = QListWidgetItem(self.crate_track_list)
                     item.setData(Qt.ItemDataRole.UserRole, track)
-                    row = LibraryTrackRow(
-                        self.crate_track_list, track, item,
-                        accent_color=self.settings_manager.get('accentColor', '#FF5500')
-                    )
-                    item.setSizeHint(row.sizeHint())
-                    self.crate_track_list.setItemWidget(item, row)
+                    self._add_track_row_to_list(self.crate_track_list, track, item)
 
     def _on_smart_crate_selected(self, crate_name):
         self.active_crate = crate_name
@@ -1543,12 +1583,7 @@ class MainWindow(QMainWindow):
             if match:
                 item = QListWidgetItem(self.crate_track_list)
                 item.setData(Qt.ItemDataRole.UserRole, track)
-                row = LibraryTrackRow(
-                    self.crate_track_list, track, item,
-                    accent_color=self.settings_manager.get('accentColor', '#FF5500')
-                )
-                item.setSizeHint(row.sizeHint())
-                self.crate_track_list.setItemWidget(item, row)
+                self._add_track_row_to_list(self.crate_track_list, track, item)
 
     def _on_track_dropped_to_crate(self, crate_name, track_path):
         crates = self.settings_manager.get('crates', {})
@@ -1576,10 +1611,7 @@ class MainWindow(QMainWindow):
 
     def _show_crate_context_menu(self, crate_name, pos):
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu { background-color: #212133; color: #E8E3DF; border: 1px solid #3B3633; padding: 4px; border-radius: 4px; }
-            QMenu::item:selected { background-color: #3B3633; }
-        """)
+        menu.setStyleSheet(self._context_menu_style())
         serato_action = menu.addAction("Sync to Serato (.crate)...")
         export_action = menu.addAction("Export Crate to M3U Playlist...")
         rename_action = menu.addAction("Rename Crate")

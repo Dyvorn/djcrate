@@ -1171,6 +1171,24 @@ class DroppableCrateTab(QPushButton):
 
 
 class QueueItemRow(QWidget):
+    """
+    A single row inside the Download Queue list, showing status, progress, and actions.
+
+    Rows start in one of five statuses: ``queued``, ``downloading``, ``completed``,
+    ``failed``, or ``cancelled``.  For in-progress downloads, call
+    :meth:`update_progress` to update the progress bar *in-place* rather than
+    rebuilding the entire widget.
+
+    Signals
+    -------
+    cancel_requested(url: str)
+        Emitted when the user clicks the cancel button.
+    retry_requested(url: str, title: str)
+        Emitted when the user clicks the retry button on a failed item.
+    view_log_requested(url: str)
+        Emitted when the user clicks the log button.
+    """
+
     cancel_requested = pyqtSignal(str)
     retry_requested  = pyqtSignal(str, str)
     view_log_requested = pyqtSignal(str)
@@ -1223,17 +1241,19 @@ class QueueItemRow(QWidget):
 
         if status == 'downloading':
             pct = self.item_data.get('progress', 0)
-            prog = QProgressBar()
-            prog.setRange(0, 100)
-            prog.setValue(int(pct))
-            prog.setFixedSize(100, 8)
-            layout.addWidget(prog)
+            self._prog_bar = QProgressBar()
+            self._prog_bar.setRange(0, 100)
+            self._prog_bar.setValue(int(pct))
+            self._prog_bar.setFixedSize(100, 8)
+            layout.addWidget(self._prog_bar)
 
-            pct_lbl = QLabel(f"{int(pct)}%")
-            pct_lbl.setObjectName("queue-item-pct")
-            pct_lbl.setFixedWidth(40)
-            layout.addWidget(pct_lbl)
+            self._pct_lbl = QLabel(f"{int(pct)}%")
+            self._pct_lbl.setObjectName("queue-item-pct")
+            self._pct_lbl.setFixedWidth(40)
+            layout.addWidget(self._pct_lbl)
         else:
+            self._prog_bar = None
+            self._pct_lbl = None
             status_text = {
                 'queued':    'Waiting...',
                 'completed': 'Done',
@@ -1271,6 +1291,24 @@ class QueueItemRow(QWidget):
         log_btn.setToolTip("View Log")
         log_btn.clicked.connect(lambda: self.view_log_requested.emit(self.item_data.get('url', '')))
         layout.addWidget(log_btn)
+
+    def update_progress(self, pct: float):
+        """
+        Update the download progress bar and percentage label in-place.
+
+        Avoids destroying and recreating the entire row widget on every tick,
+        which preserves connected signals (e.g. cancel button) and is far more
+        efficient.  Only has an effect when the row is in 'downloading' status.
+
+        Parameters
+        ----------
+        pct : float
+            Download percentage, 0–100.
+        """
+        if self._prog_bar is not None:
+            self._prog_bar.setValue(int(pct))
+        if self._pct_lbl is not None:
+            self._pct_lbl.setText(f"{int(pct)}%")
 
 
 class HistoryItemRow(QWidget):

@@ -119,7 +119,20 @@ def get_track_artwork(file_path: str):
 
 class CamelotMatcher:
     """
-    Intelligent Harmonic Key, BPM, and Vibe Matcher using Camelot Wheel Rules.
+    Intelligent Harmonic Key, BPM, and Vibe Matcher using the Camelot Wheel system.
+
+    The Camelot Wheel maps musical keys to numbers (1–12) and letters (A=minor, B=major).
+    Compatible keys are adjacent on the wheel (+/−1 step) or share the same number
+    (relative major/minor). BPM matching allows for direct, half-time, and double-time
+    relationships.
+
+    Public API
+    ----------
+    calculate_match_score(key1, bpm1, key2, bpm2) -> (score, key_quality, bpm_quality)
+        Compact entry point used by GigMatcherWidget and any consumer needing a flat score.
+
+    calculate_track_match(source_track, target_track) -> dict
+        Rich result dict used by LibraryTrackRow match badges and filter_library sorting.
     """
     CAMELOT_WHEEL = [
         '1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B',
@@ -228,7 +241,8 @@ class CamelotMatcher:
         b2 = float(target_track.get('bpm', 0)) if str(target_track.get('bpm', '')).isdigit() else 0.0
         bpm_score, bpm_label = cls.calculate_bpm_match(b1, b2)
 
-        # Rating vibe bonus
+        # Rating vibe bonus: 4-star adds 5% to score, 5-star adds 10%.
+        # Kept small so key+BPM compatibility always dominate the sort.
         rating = target_track.get('rating', 0)
         rating_bonus = 0.05 if rating == 4 else (0.10 if rating == 5 else 0.0)
 
@@ -258,3 +272,37 @@ class CamelotMatcher:
             'target_bpm': str(int(b2)) if b2 > 0 else '',
             'is_harmonic': is_harmonic
         }
+
+    @classmethod
+    def calculate_match_score(cls, key1: str, bpm1: str, key2: str, bpm2: str) -> tuple:
+        """
+        Compact entry point returning ``(score: int, key_quality: str, bpm_quality: str)``.
+
+        Designed for ``GigMatcherWidget`` and any caller that needs a flat percentage
+        without building full track dicts.
+
+        Parameters
+        ----------
+        key1, key2 : str
+            Camelot key strings, e.g. ``"8A"``.
+        bpm1, bpm2 : str
+            BPM values as strings (may be empty, which returns neutral scores).
+
+        Returns
+        -------
+        tuple of (int, str, str)
+            ``score`` is 0–100; ``key_quality`` and ``bpm_quality`` are human-readable labels.
+        """
+        key_score, key_quality = cls.calculate_key_match(key1, key2)
+
+        try:
+            b1 = float(bpm1) if bpm1 and str(bpm1).replace('.', '', 1).isdigit() else 0.0
+            b2 = float(bpm2) if bpm2 and str(bpm2).replace('.', '', 1).isdigit() else 0.0
+        except (ValueError, TypeError):
+            b1, b2 = 0.0, 0.0
+
+        bpm_score, bpm_quality = cls.calculate_bpm_match(b1, b2)
+
+        # Same 50/40 weighting as calculate_track_match (no rating bonus here)
+        total = min(100, int((key_score * 0.50 + bpm_score * 0.40) * 100))
+        return total, key_quality, bpm_quality

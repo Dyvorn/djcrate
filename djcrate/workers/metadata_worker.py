@@ -1,3 +1,20 @@
+"""
+metadata_worker.py — Background workers for audio metadata operations.
+
+Contains three QThread subclasses:
+
+``MetadataProbeThread``
+    Runs ffprobe to extract duration and artist from audio files.
+
+``AnalysisThread``
+    Uses librosa to detect BPM and Camelot Key, then writes the results
+    back into the file's ID3/Vorbis/MP4 tags using mutagen.
+
+``AutoTagThread``
+    Queries the iTunes Search API (and Beatport as fallback) to fetch genre,
+    year, album, artist, title, and hi-res cover art, then embeds them in the file.
+"""
+
 import os
 import sys
 import json

@@ -1,3 +1,12 @@
+"""
+DownloadThread — Background yt-dlp audio download worker.
+
+Spawns a ``yt-dlp`` sub-process to download and extract audio from YouTube,
+SoundCloud, Bandcamp, or any yt-dlp-compatible URL.  Progress is parsed from
+yt-dlp's ``--newline`` output and emitted as Qt signals so the UI can update
+in real time without blocking the event loop.
+"""
+
 import os
 import sys
 import re
@@ -6,7 +15,22 @@ import glob
 import subprocess
 from PyQt6.QtCore import QThread, pyqtSignal
 
+
 class DownloadThread(QThread):
+    """
+    QThread subclass that runs a ``yt-dlp`` download in the background.
+
+    Signals
+    -------
+    progress(url, pct, speed, eta)
+        Emitted after each parsed progress line from yt-dlp stdout.
+    completed(url, ok, result)
+        Emitted when the download finishes.  ``ok`` is True on success;
+        ``result`` is the local file path on success or an error message on failure.
+    log_line(url, line)
+        Emitted for every raw output line from yt-dlp (for the log viewer).
+    """
+
     progress = pyqtSignal(str, float, str, str)
     completed = pyqtSignal(str, bool, str)
     log_line = pyqtSignal(str, str)
