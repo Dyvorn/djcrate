@@ -979,7 +979,16 @@ class LibraryTrackRow(QWidget):
             self.title_label.setObjectName("track-row-title-playing")
         else:
             self.title_label.setObjectName("track-row-title")
-        self.title_label.setToolTip(self.track['path'])
+
+        tooltip_text = (
+            f"Title: {self.track['title']}\n"
+            f"Artist: {self.track.get('artist', 'Unknown Artist')}\n"
+            f"BPM: {self.track.get('bpm', 'Unanalyzed')}  ·  Key: {self.track.get('key', 'Unanalyzed')}\n"
+            f"Format: {self.track['format'].upper()}  ·  Duration: {self.track.get('duration_str', '—')}\n"
+            f"Location: {self.track['path']}"
+        )
+        self.setToolTip(tooltip_text)
+        self.title_label.setToolTip(tooltip_text)
         layout.addWidget(self.title_label, 1)
 
         # Artist

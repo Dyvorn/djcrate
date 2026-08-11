@@ -652,9 +652,28 @@ class MainWindow(QMainWindow):
         tool_box.addWidget(QLabel("Cookies file:"), 2, 0)
         self.cookies_input = QLineEdit(self.settings_manager.get('cookiesPath', ''))
         self.cookies_input.textChanged.connect(lambda t: self.settings_manager.set('cookiesPath', t))
-        tool_box.addWidget(self.cookies_input, 2, 1)
-
         c_layout.addLayout(tool_box)
+
+        # Quick Actions Header
+        quick_hdr = QLabel("DATA & FOLDER SHORTCUTS")
+        quick_hdr.setStyleSheet("font-size: 14px; font-weight: 800; color: #C47D63; letter-spacing: 1px; margin-top: 10px;")
+        c_layout.addWidget(quick_hdr)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+
+        btn_open_music = QPushButton(" Open Music Directory")
+        btn_open_music.setIcon(qta.icon("fa5s.folder-open", color="#E8E3DF"))
+        btn_open_music.clicked.connect(self._open_music_dir)
+
+        btn_open_appdata = QPushButton(" Open OBS & Data Directory")
+        btn_open_appdata.setIcon(qta.icon("fa5s.cogs", color="#E8E3DF"))
+        btn_open_appdata.clicked.connect(self._open_appdata_dir)
+
+        btn_row.addWidget(btn_open_music)
+        btn_row.addWidget(btn_open_appdata)
+        btn_row.addStretch()
+        c_layout.addLayout(btn_row)
 
         c_layout.addStretch()
         scroll.setWidget(content)
@@ -879,6 +898,18 @@ class MainWindow(QMainWindow):
             self.music_path_input.setText(dir_path)
             self.settings_manager.set('musicPath', dir_path)
             self.refresh_library()
+
+    def _open_music_dir(self):
+        music_path = self.settings_manager.get('musicPath')
+        if os.path.exists(music_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(music_path))
+        else:
+            self.toast_manager.show_toast("Music directory does not exist.", toast_type="error")
+
+    def _open_appdata_dir(self):
+        app_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'DJ Crate')
+        os.makedirs(app_dir, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(app_dir))
 
     def _on_search_text_changed(self, text):
         if text.strip():
