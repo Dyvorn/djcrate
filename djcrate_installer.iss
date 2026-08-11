@@ -1,6 +1,6 @@
 [Setup]
 AppName=DJ Crate
-AppVersion=1.0.0
+AppVersion=0.2.0-alpha
 AppPublisher=DJ Crate Contributors
 AppPublisherURL=https://github.com/yourusername/dj-crate
 DefaultDirName={pf}\DJ Crate
