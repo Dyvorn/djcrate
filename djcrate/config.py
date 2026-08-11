@@ -2,6 +2,7 @@ import os
 import json
 from datetime import datetime
 from djcrate.logger import logger
+from djcrate.database import DatabaseManager
 
 class SettingsManager:
     DEFAULT_ACCENT = "#C47D63"
@@ -18,87 +19,122 @@ class SettingsManager:
     def __init__(self):
         self.settings_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'DJ Crate')
         os.makedirs(self.settings_dir, exist_ok=True)
+        
+        self.db_path = os.path.join(self.settings_dir, 'djcrate.db')
+        self.db = DatabaseManager(self.db_path)
+        
         self.settings_path = os.path.join(self.settings_dir, 'settings.json')
+        
+        self.migrate_from_json()
 
-        default_music = os.path.join(os.path.expanduser('~'), 'Music', 'DJ Crate')
-        self.settings = {
-            'musicPath': default_music,
+        # Ensure music path exists
+        music_path = self.get('musicPath', os.path.join(os.path.expanduser('~'), 'Music', 'DJ Crate'))
+        music_path = os.path.abspath(music_path)
+        try:
+            os.makedirs(music_path, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create music directory at {music_path}: {e}")
+            fallback_dir = os.path.join(self.settings_dir, 'Music')
+            os.makedirs(fallback_dir, exist_ok=True)
+            music_path = fallback_dir
+            
+        self.set('musicPath', music_path)
+
+    def migrate_from_json(self):
+        if os.path.exists(self.settings_path):
+            try:
+                with open(self.settings_path, 'r', encoding='utf-8') as f:
+                    old_settings = json.load(f)
+                    
+                # Migrate settings
+                for k, v in old_settings.items():
+                    if k not in ['crates', 'smartCrates', 'history', 'trackMetadata', 'ratings']:
+                        self.set(k, v)
+                        
+                # Migrate crates
+                for name, tracks in old_settings.get('crates', {}).items():
+                    self.db.add_crate(name)
+                    for t in tracks:
+                        self.db.add_track_to_crate(name, t)
+                        
+                for name, rules in old_settings.get('smartCrates', {}).items():
+                    self.db.add_smart_crate(name, rules)
+                    
+                # Migrate history
+                for h in reversed(old_settings.get('history', [])):
+                    self.db.add_history_entry(
+                        h.get('title'), h.get('url'), h.get('format'), 
+                        h.get('status'), h.get('file_path'), h.get('date')
+                    )
+                    
+                # Migrate ratings and metadata
+                for fp, rating in old_settings.get('ratings', {}).items():
+                    self.db.upsert_track(fp, {'rating': rating})
+                    
+                for fp, meta in old_settings.get('trackMetadata', {}).items():
+                    self.db.upsert_track(fp, meta)
+                    
+                # Rename to backup so we don't migrate again
+                os.rename(self.settings_path, self.settings_path + '.bak')
+                logger.info("Successfully migrated settings.json to SQLite database")
+            except Exception as e:
+                logger.error(f"Error migrating from JSON: {e}")
+
+    def load(self):
+        pass # Replaced by DB
+
+    def save(self):
+        pass # Replaced by DB auto-commit
+
+    def get(self, key, default=None):
+        if key == 'crates':
+            return self.db.get_manual_crates()
+        elif key == 'smartCrates':
+            return self.db.get_smart_crates()
+        elif key == 'history':
+            return self.db.get_history()
+        
+        # Default settings if none in DB
+        defaults = {
             'format': 'mp3',
-            'crates': {},
-            'smartCrates': {},
             'maxConcurrent': 3,
-            'history': [],
             'volume': 80,
             'accentColor': self.DEFAULT_ACCENT,
             'theme': 'Dark',
-            'ratings': {},
-            'trackMetadata': {},
             'trimSilence': False,
             'autoPlayOnLaunch': False,
             'startupView': 'Library'
         }
-        self.load()
-
-    def load(self):
-        if os.path.exists(self.settings_path):
-            try:
-                with open(self.settings_path, 'r', encoding='utf-8') as f:
-                    loaded = json.load(f)
-                    self.settings.update(loaded)
-            except Exception as e:
-                logger.error(f"Error loading settings: {e}")
-        self.settings['musicPath'] = os.path.abspath(self.settings['musicPath'])
-        os.makedirs(self.settings['musicPath'], exist_ok=True)
-
-    def save(self):
-        try:
-            with open(self.settings_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving settings: {e}")
-
-    def get(self, key, default=None):
-        return self.settings.get(key, default)
+        val = self.db.get_setting(key, None)
+        if val is None:
+            return default if default is not None else defaults.get(key)
+        return val
 
     def set(self, key, value):
-        self.settings[key] = value
-        self.save()
+        if key == 'crates':
+            # Handle full dict replacement (fallback for legacy code)
+            pass 
+        elif key == 'smartCrates':
+            pass
+        else:
+            self.db.set_setting(key, value)
 
     def get_rating(self, track_key: str) -> int:
-        ratings = self.settings.get('ratings', {})
-        return ratings.get(track_key, 0)
+        track = self.db.get_track(track_key)
+        return track.get('rating', 0)
 
     def set_rating(self, track_key: str, rating: int):
-        ratings = self.settings.get('ratings', {})
-        ratings[track_key] = rating
-        self.settings['ratings'] = ratings
-        self.save()
+        self.db.upsert_track(track_key, {'rating': rating})
 
     def get_track_meta(self, file_path: str) -> dict:
-        meta = self.settings.get('trackMetadata', {})
-        return meta.get(file_path, {})
+        return self.db.get_track(file_path)
 
     def set_track_meta(self, file_path: str, data: dict):
-        meta = self.settings.get('trackMetadata', {})
-        current = meta.get(file_path, {})
-        current.update(data)
-        meta[file_path] = current
-        self.settings['trackMetadata'] = meta
-        self.save()
+        self.db.upsert_track(file_path, data)
 
     def add_history_entry(self, title, url, fmt, status, file_path=None):
-        history = self.settings.get('history', [])
-        history.insert(0, {
-            'title': title,
-            'url': url,
-            'format': fmt,
-            'status': status,
-            'file_path': file_path or '',
-            'date': datetime.now().strftime('%Y-%m-%d %H:%M')
-        })
-        self.settings['history'] = history[:200]
-        self.save()
+        date = datetime.now().strftime('%Y-%m-%d %H:%M')
+        self.db.add_history_entry(title, url, fmt, status, file_path or '', date)
 
     def clear_history(self):
-        self.settings['history'] = []
-        self.save()
+        self.db.clear_history()

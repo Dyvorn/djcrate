@@ -3,3 +3,4 @@ Pillow
 qtawesome
 mutagen
 yt-dlp
+requests

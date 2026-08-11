@@ -60,16 +60,47 @@ jobs:
           files: Releases/DJ_Crate_Installer.exe
           name: DJ Crate ${{ github.ref_name }}
           body: |
-            ## 💿 DJ Crate ${{ github.ref_name }}
-            
-            Welcome to the release of DJ Crate ${{ github.ref_name }}! 
-            
-            ### 🛠 Installation Instructions
-            1. Download the **`DJ_Crate_Installer.exe`** file below.
-            2. Run the installer to set up DJ Crate on your system.
-            
+            ## 🎛️ DJ Crate ${{ github.ref_name }}
+
+            Welcome to **DJ Crate ${{ github.ref_name }}**! This update introduces major architectural foundations, automated metadata tagging, and UI visual improvements.
+
             ---
-            ### 📝 Release Notes
+
+            ### 🚀 What's New in this Release
+
+            #### 🗄️ SQLite Database Architecture
+            - **Seamless Migration**: Automatically migrates old `settings.json` data into a fast, relational `djcrate.db` SQLite database.
+            - **Performance**: High-speed library indexing, history queries, and smart crate processing.
+            - **Future Proofing**: Prepares the codebase for cloud sync and user account integration.
+
+            #### 🎵 Advanced Metadata & Cover Art Engine
+            - **iTunes Integration**: Automatically fetches official artist, title, album, and high-resolution cover art from iTunes upon download completion.
+            - **ID3 Tag Embedding**: Directly embeds ID3 tags (`APIC`, `TPE1`, `TIT2`, `TALB`) into `.mp3` and `.flac` files for compatibility with Rekordbox, Serato, and DJ Crate.
+
+            #### 🎨 UI & Startup Experience Overhaul
+            - **Juicy Startup Screen**: Replaced the basic splash screen with a dark radial gradient, glowing headphone artwork, floating drop shadow, and animated equalizer bars.
+            - **Responsive Scaling**: Improved splash screen dimensions and smooth opacity transitions.
+
+            #### 🐛 Bug Fixes & Stability Improvements
+            - **Startup Directory Crash Fix**: Fixed `FileNotFoundError` when `musicPath` points to an invalid or missing user directory (added graceful fallback to `APPDATA/DJ Crate/Music`).
+            - **Qt Effect Conflict Fix**: Resolved `QPainter` rendering conflicts during splash screen rendering by animating window opacity directly.
+            - **Import & Variable Fixes**: Fixed `QGraphicsDropShadowEffect` missing import and `QColor` scope issues.
+
+            ---
+
+            ### ⚠️ Windows Defender SmartScreen Notice
+            > **Note for Windows Users:** Because DJ Crate is open-source indie software and not signed with an EV Code Signing Certificate, Windows Defender SmartScreen may label it as an "Unrecognized App".
+            > 
+            > **How to install safely:**
+            > 1. Run `DJ_Crate_Installer.exe`.
+            > 2. Click **"More info"**.
+            > 3. Click **"Run anyway"**.
+
+            ---
+
+            ### 🛠️ Installation Instructions
+            1. Download **`DJ_Crate_Installer.exe`** from the Assets section below.
+            2. Run the installer to install or upgrade DJ Crate on your system.
           generate_release_notes: true
           draft: false
         env:

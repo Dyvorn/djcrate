@@ -89,6 +89,34 @@ def extract_file_audio_metadata(file_path: str) -> dict:
     return metadata
 
 
+def get_track_artwork(file_path: str):
+    """
+    Extracts the embedded cover art from an audio file.
+    Returns bytes of the image, or None if no artwork exists.
+    """
+    if not os.path.exists(file_path):
+        return None
+    try:
+        import mutagen
+        audio = mutagen.File(file_path)
+        if audio is None:
+            return None
+        
+        # ID3 (MP3)
+        if hasattr(audio, 'tags') and audio.tags:
+            for tag in audio.tags.values():
+                if tag.__class__.__name__ == 'APIC':
+                    return tag.data
+        
+        # FLAC
+        if hasattr(audio, 'pictures') and audio.pictures:
+            return audio.pictures[0].data
+            
+    except Exception as e:
+        logger.debug(f"Error extracting artwork for {file_path}: {e}")
+    return None
+
+
 class CamelotMatcher:
     """
     Intelligent Harmonic Key, BPM, and Vibe Matcher using Camelot Wheel Rules.

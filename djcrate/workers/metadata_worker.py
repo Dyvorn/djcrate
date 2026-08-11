@@ -185,11 +185,11 @@ class AutoTagThread(QThread):
                 self.progress.emit(path, "Fetching metadata...")
                 name = os.path.basename(path).rsplit('.', 1)[0]
                 if ' - ' in name:
-                    artist, title = name.split(' - ', 1)
+                    artist_str, title_str = name.split(' - ', 1)
                 else:
-                    artist, title = "", name
+                    artist_str, title_str = "", name
                 
-                query = f"{artist} {title}".strip()
+                query = f"{artist_str} {title_str}".strip()
                 url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query)}&entity=song&limit=1"
                 resp = requests.get(url, timeout=5).json()
                 
@@ -201,6 +201,9 @@ class AutoTagThread(QThread):
                 genre = track_info.get('primaryGenreName', '')
                 year = track_info.get('releaseDate', '')[:4]
                 art_url = track_info.get('artworkUrl100', '').replace('100x100bb.jpg', '600x600bb.jpg')
+                fetch_artist = track_info.get('artistName', '')
+                fetch_title = track_info.get('trackName', '')
+                fetch_album = track_info.get('collectionName', '')
                 
                 img_data = None
                 if art_url:
@@ -211,6 +214,7 @@ class AutoTagThread(QThread):
                         
                 self.progress.emit(path, "Writing tags...")
                 
+                from mutagen.id3 import TPE1, TIT2, TALB
                 ext = path.lower().split('.')[-1]
                 if ext == 'mp3':
                     try:
@@ -220,6 +224,9 @@ class AutoTagThread(QThread):
                         
                     if genre: audio.add(TCON(encoding=3, text=genre))
                     if year: audio.add(TDRC(encoding=3, text=year))
+                    if fetch_artist: audio.add(TPE1(encoding=3, text=fetch_artist))
+                    if fetch_title: audio.add(TIT2(encoding=3, text=fetch_title))
+                    if fetch_album: audio.add(TALB(encoding=3, text=fetch_album))
                     if img_data:
                         audio.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
                     audio.save(path)
@@ -228,6 +235,9 @@ class AutoTagThread(QThread):
                     audio = FLAC(path)
                     if genre: audio['genre'] = genre
                     if year: audio['date'] = year
+                    if fetch_artist: audio['artist'] = fetch_artist
+                    if fetch_title: audio['title'] = fetch_title
+                    if fetch_album: audio['album'] = fetch_album
                     if img_data:
                         pic = Picture()
                         pic.type = 3
@@ -237,6 +247,9 @@ class AutoTagThread(QThread):
                         audio.add_picture(pic)
                     audio.save()
                     
-                self.completed.emit(path, {'genre': genre, 'year': year, 'has_art': bool(img_data)})
+                self.completed.emit(path, {
+                    'genre': genre, 'year': year, 'has_art': bool(img_data),
+                    'artist': fetch_artist, 'title': fetch_title, 'album': fetch_album
+                })
             except Exception as e:
                 self.error_occurred.emit(path, str(e))

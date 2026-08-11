@@ -904,11 +904,20 @@ class MainWindow(QMainWindow):
             self.settings_manager.add_history_entry(
                 os.path.basename(result), url, result.rsplit('.', 1)[-1] if '.' in result else '', 'completed', result
             )
-            self.refresh_library()
-            self.start_library_analysis(force_all=False)
+            
+            # Start iTunes Metadata Fetching
+            tag_thread = AutoTagThread([result])
+            tag_thread.completed.connect(self._on_autotag_completed)
+            tag_thread.start()
+            self._running_threads.append(tag_thread)
         else:
             self.toast_manager.show_toast(f"Download failed: {result}", toast_type="error")
             self.settings_manager.add_history_entry(result, url, '', 'failed')
+
+    def _on_autotag_completed(self, path, data):
+        self.settings_manager.set_track_meta(path, data)
+        self.refresh_library()
+        self.start_library_analysis(force_all=False)
 
     def refresh_library(self):
         path = self.settings_manager.get('musicPath')
@@ -1170,9 +1179,7 @@ class MainWindow(QMainWindow):
     def add_crate_dialog(self):
         text, ok = QInputDialog.getText(self, "New Crate", "Crate Name:")
         if ok and text.strip():
-            crates = self.settings_manager.get('crates', {})
-            crates[text.strip()] = []
-            self.settings_manager.set('crates', crates)
+            self.settings_manager.db.add_crate(text.strip())
             self.toast_manager.show_toast(f"Created crate: {text.strip()}", toast_type="success")
             self._render_crate_tabs()
 
@@ -1181,9 +1188,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             if data['name']:
-                smarts = self.settings_manager.get('smartCrates', {})
-                smarts[data['name']] = data
-                self.settings_manager.set('smartCrates', smarts)
+                self.settings_manager.db.add_smart_crate(data['name'], data)
                 self.toast_manager.show_toast(f"Created smart crate: {data['name']}", toast_type="success")
                 self._render_crate_tabs()
 
@@ -1267,8 +1272,7 @@ class MainWindow(QMainWindow):
         crates = self.settings_manager.get('crates', {})
         if crate_name in crates:
             if track_path not in crates[crate_name]:
-                crates[crate_name].append(track_path)
-                self.settings_manager.set('crates', crates)
+                self.settings_manager.db.add_track_to_crate(crate_name, track_path)
                 self.toast_manager.show_toast(f"Added to {crate_name}", toast_type="success")
                 self._render_crate_tabs()
                 if self.active_crate == crate_name:
@@ -1285,18 +1289,14 @@ class MainWindow(QMainWindow):
         action = menu.exec(pos)
         if action == delete_action:
             if QMessageBox.question(self, "Delete Crate", f"Delete crate '{crate_name}'?") == QMessageBox.StandardButton.Yes:
-                crates = self.settings_manager.get('crates', {})
-                crates.pop(crate_name, None)
-                self.settings_manager.set('crates', crates)
+                self.settings_manager.db.delete_crate(crate_name)
                 self.toast_manager.show_toast(f"Deleted crate: {crate_name}", toast_type="info")
                 self._render_crate_tabs()
                 self.crate_track_list.clear()
         elif action == rename_action:
             new_name, ok = QInputDialog.getText(self, "Rename Crate", "New Name:", text=crate_name)
             if ok and new_name.strip() and new_name.strip() != crate_name:
-                crates = self.settings_manager.get('crates', {})
-                crates[new_name.strip()] = crates.pop(crate_name, [])
-                self.settings_manager.set('crates', crates)
+                self.settings_manager.db.rename_crate(crate_name, new_name.strip())
                 self._render_crate_tabs()
 
     def _find_library_track(self, path):

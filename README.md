@@ -8,8 +8,10 @@
 
 - **Search & Discover:** Quickly search YouTube and SoundCloud for tracks, remixes, and sets.
 - **Fast Downloading:** Powered by `yt-dlp` for high-quality, reliable audio extraction.
-- **Waveform Visualization:** Uses `ffmpeg` to generate and display audio waveforms so you can preview drops and breaks instantly.
-- **Track Management:** Keep your digital crates organized with built-in metadata parsing.
+- **Advanced Metadata Engine:** Automatically hits the iTunes API to download high-res cover art and embeds official ID3 tags (Artist, Title, Album) directly into the file.
+- **SQLite Database:** Lightning-fast library management, smart crate queries, and reliable download history backing.
+- **Waveform & Key Analysis:** Uses `ffmpeg` and `librosa` to analyze BPM, Camelot Key, and generate waveforms to preview drops instantly.
+- **Smart Crates:** Automatically organize your library based on BPM, Key, or Title rules.
 - **Mini Player:** A compact overlay player to listen to tracks while you do other tasks.
 - **Theming:** Beautiful, customizable PyQt6 user interface with dynamic theming.
 
@@ -19,8 +21,10 @@
 
 - **[Python 3.11+](https://www.python.org/)** - Core programming language.
 - **[PyQt6](https://riverbankcomputing.com/software/pyqt/)** - Modern, responsive GUI framework.
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Backend engine for downloading and streaming media.
-- **[FFmpeg](https://ffmpeg.org/)** - Audio conversion and waveform generation.
+- **[SQLite](https://www.sqlite.org/)** - Built-in relational database for robust library management.
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Backend engine for downloading media.
+- **[FFmpeg](https://ffmpeg.org/) & [Librosa](https://librosa.org/)** - Audio conversion, key/BPM analysis, and waveform generation.
+- **[Mutagen](https://mutagen.readthedocs.io/)** - For embedding ID3 metadata and cover art.
 - **[PyInstaller](https://pyinstaller.org/) & [Inno Setup](https://jrsoftware.org/isinfo.php)** - Packaging and Windows Installer generation.
 
 ---
@@ -44,13 +48,14 @@ djcrate/
 │   ├── workers/              # Asynchronous background threads (QThread)
 │   │   ├── download_worker.py # Handles media downloading
 │   │   ├── search_worker.py   # Handles YouTube/SoundCloud searching
-│   │   ├── metadata_worker.py # Parses audio metadata and tags
+│   │   ├── metadata_worker.py # iTunes metadata, tag embedding, and Librosa analysis
 │   │   └── waveform_worker.py # Generates audio waveforms via FFmpeg
 │   │
 │   ├── app.py                # Main QApplication initialization and dependency checks
-│   ├── config.py             # User preferences and settings manager
+│   ├── database.py           # SQLite manager for crates, tracks, and settings
+│   ├── config.py             # Settings manager and database abstraction
 │   ├── logger.py             # Application logging and error handling
-│   └── utils.py              # Helper functions (dependency checks, formatting)
+│   └── utils.py              # Helper functions (dependency checks, metadata extraction)
 │
 ├── build.spec                # PyInstaller configuration for building the .exe
 ├── djcrate_installer.iss     # Inno Setup script to compile the Windows installer
