@@ -506,7 +506,7 @@ class LoudnessMeterWidget(QWidget):
 
         if is_clipping:
             painter.setPen(QColor("#FF4D4D"))
-            txt = f"⚠️ CLIP {self.max_db:+.1f}dB"
+            txt = f"CLIP {self.max_db:+.1f}dB"
         else:
             painter.setPen(QColor("#00E676") if self.max_db < -1.0 else QColor("#FFD600"))
             txt = f"{self.max_db:+.1f} dBFS"
@@ -619,8 +619,7 @@ class SearchResultCard(QWidget):
         details_layout.addWidget(self.title_label)
 
         source = self.result.get('source', 'YouTube')
-        source_icon = '▶' if source == 'YouTube' else '☁' if source == 'SoundCloud' else '♫'
-        self.meta_label = QLabel(f"{source_icon} {source}  ·  {self.result['artist']}  ·  {self.result['duration']}")
+        self.meta_label = QLabel(f"{source}  ·  {self.result['artist']}  ·  {self.result['duration']}")
         self.meta_label.setObjectName("result-meta")
         details_layout.addWidget(self.meta_label)
 
@@ -953,8 +952,8 @@ class LibraryTrackRow(QWidget):
                 badge_color = "#A0A0A0"
                 bg_color = "rgba(160, 160, 160, 0.10)"
 
-            # Build rich badge text: ⚡ 92% · 8A→8B · 128
-            parts = [f"\u26a1 {score}%"]
+            # Build rich badge text: 92% Match · 8A→8B · 128
+            parts = [f"{score}% Match"]
             src_key = self.match_info.get('source_key', '')
             tgt_key = self.match_info.get('target_key', '')
             if src_key and tgt_key:

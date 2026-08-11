@@ -45,6 +45,10 @@ from djcrate.workers import (
     MetadataProbeThread, AnalysisThread, AutoTagThread, WaveformGeneratorThread, MixSplitterThread
 )
 from djcrate.updater import AutoUpdaterThread
+from djcrate.serato import SeratoCrateWriter
+from djcrate.obs_overlay import ObsOverlayWriter
+from djcrate.ui.clipboard_widget import ClipboardGrabberWidget
+from djcrate.ui.gig_matcher_widget import GigMatcherWidget
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -61,6 +65,13 @@ class MainWindow(QMainWindow):
         self.search_results = []
         self._running_threads = []
         self._sidebar_collapsed = False
+        self.gig_matcher = None
+
+        self.clipboard_grabber = ClipboardGrabberWidget(accent_color=self.settings_manager.get('accentColor', '#FF5500'))
+        self.clipboard_grabber.download_requested.connect(self.quick_download_url)
+        self._clipboard_timer = QTimer(self)
+        self._clipboard_timer.timeout.connect(self.clipboard_grabber.check_clipboard)
+        self._clipboard_timer.start(1500)
 
         self.download_queue = []
         self.download_threads = {}
@@ -181,7 +192,7 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setMinimumSize(960, 680)
+        self.setMinimumSize(1120, 720)
 
         central = QWidget()
         central.setObjectName("centralWidget")
@@ -318,45 +329,68 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
 
-        hdr_layout = QHBoxLayout()
-        
+        # Row 1: Search & Sorting
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
         self.lib_search_input = QLineEdit()
-        self.lib_search_input.setPlaceholderText("Filter library tracks...")
+        self.lib_search_input.setPlaceholderText("Filter library tracks by title or artist...")
+        self.lib_search_input.setFixedHeight(36)
         self.lib_search_input.textChanged.connect(self.filter_library)
 
         self.lib_sort_combo = QComboBox()
         self.lib_sort_combo.addItems(["Date Added", "Title", "Artist", "BPM", "Duration", "Size", "Rating"])
+        self.lib_sort_combo.setFixedHeight(36)
         self.lib_sort_combo.currentIndexChanged.connect(self.filter_library)
 
-        self.btn_match_assistant = QPushButton(" ⚡ DJ Match Assistant")
+        top_row.addWidget(self.lib_search_input, 1)
+        top_row.addWidget(QLabel("Sort By:"))
+        top_row.addWidget(self.lib_sort_combo)
+        layout.addLayout(top_row)
+
+        # Row 2: Action Toolbar (spacious, un-cramped)
+        action_bar = QHBoxLayout()
+        action_bar.setSpacing(8)
+
+        self.btn_match_assistant = QPushButton(" Match Assistant")
         self.btn_match_assistant.setIcon(qta.icon("fa5s.bolt", color="#00E676"))
         self.btn_match_assistant.setCheckable(True)
+        self.btn_match_assistant.setFixedHeight(32)
         self.btn_match_assistant.setToolTip("Harmonically match tracks in key, BPM & vibe with currently playing track")
         self.btn_match_assistant.toggled.connect(self.on_match_assistant_toggled)
 
-        self.btn_analyze_lib = QPushButton(" 🔍 Analyze BPM & Keys")
+        self.btn_gig_matcher = QPushButton(" Gig Overlay")
+        self.btn_gig_matcher.setIcon(qta.icon("fa5s.external-link-alt", color="#00E676"))
+        self.btn_gig_matcher.setFixedHeight(32)
+        self.btn_gig_matcher.setToolTip("Launch ultra-compact live gig matcher overlay for Serato/Rekordbox")
+        self.btn_gig_matcher.clicked.connect(self.toggle_gig_matcher_overlay)
+
+        self.btn_analyze_lib = QPushButton(" Analyze BPM & Keys")
         self.btn_analyze_lib.setIcon(qta.icon("fa5s.wave-square", color="#00E5FF"))
+        self.btn_analyze_lib.setFixedHeight(32)
         self.btn_analyze_lib.setToolTip("Auto-detect BPM and Camelot Key for all unanalyzed tracks")
         self.btn_analyze_lib.clicked.connect(self.start_library_analysis)
 
-        self.btn_clean_lib = QPushButton(" Clean Library")
-        self.btn_clean_lib.setIcon(qta.icon("fa5s.broom", color="#A39E9A"))
-        self.btn_clean_lib.clicked.connect(self.clean_library)
-
-        self.btn_split_mix = QPushButton(" ✂️ Split Mix")
+        self.btn_split_mix = QPushButton(" Split Mix")
         self.btn_split_mix.setIcon(qta.icon("fa5s.cut", color="#FF9800"))
+        self.btn_split_mix.setFixedHeight(32)
         self.btn_split_mix.setToolTip("Parse timestamps & split long audio DJ sets into tracks")
         self.btn_split_mix.clicked.connect(self.open_mix_splitter)
 
-        hdr_layout.addWidget(self.lib_search_input, 1)
-        hdr_layout.addWidget(self.lib_sort_combo)
-        hdr_layout.addWidget(self.btn_match_assistant)
-        hdr_layout.addWidget(self.btn_analyze_lib)
-        hdr_layout.addWidget(self.btn_split_mix)
-        hdr_layout.addWidget(self.btn_clean_lib)
-        layout.addLayout(hdr_layout)
+        self.btn_clean_lib = QPushButton(" Clean Library")
+        self.btn_clean_lib.setIcon(qta.icon("fa5s.broom", color="#A39E9A"))
+        self.btn_clean_lib.setFixedHeight(32)
+        self.btn_clean_lib.clicked.connect(self.clean_library)
+
+        action_bar.addWidget(self.btn_match_assistant)
+        action_bar.addWidget(self.btn_gig_matcher)
+        action_bar.addWidget(self.btn_analyze_lib)
+        action_bar.addWidget(self.btn_split_mix)
+        action_bar.addStretch()
+        action_bar.addWidget(self.btn_clean_lib)
+        layout.addLayout(action_bar)
 
         self.lib_stats_label = QLabel("0 tracks · Total Duration: 0:00 · 0 MB")
         self.lib_stats_label.setStyleSheet("color: #8A8580; font-size: 11px; font-weight: 600;")
@@ -1081,6 +1115,16 @@ class MainWindow(QMainWindow):
         self.player_title_label.setText(track['title'])
         self.player_artist_label.setText(track['artist'])
         self.equalizer.set_playing(True)
+
+        # Update OBS Streamer Overlay
+        ObsOverlayWriter.update_now_playing(
+            track.get('title', ''),
+            track.get('artist', ''),
+            track.get('bpm', ''),
+            track.get('key', ''),
+            accent_color=self.settings_manager.get('accentColor', '#FF5500')
+        )
+
         if self._glow_seq.state() != QSequentialAnimationGroup.State.Running:
             self._glow_seq.start()
 
@@ -1101,6 +1145,25 @@ class MainWindow(QMainWindow):
         wf_thread.loudness_ready.connect(self.on_loudness_ready)
         wf_thread.start()
         self._running_threads.append(wf_thread)
+
+    def toggle_gig_matcher_overlay(self):
+        if not self.gig_matcher:
+            self.gig_matcher = GigMatcherWidget(
+                library_tracks=self.library_tracks,
+                accent_color=self.settings_manager.get('accentColor', '#FF5500')
+            )
+            self.gig_matcher.track_preview_requested.connect(self.preview_track)
+        else:
+            self.gig_matcher.set_library_tracks(self.library_tracks)
+
+        if self.gig_matcher.isVisible():
+            self.gig_matcher.hide()
+        else:
+            self.gig_matcher.show()
+
+    def quick_download_url(self, url, fmt):
+        self.toast_manager.show_toast(f"Quick Capture download started ({fmt.upper()})...", toast_type="info")
+        self.start_download(url, "Quick Capture Track", fmt)
 
     def on_waveform_ready(self, file_path, img_path):
         if self.player_track and self.player_track['path'] == file_path:
@@ -1355,7 +1418,8 @@ class MainWindow(QMainWindow):
         smart_crates = self.settings_manager.get('smartCrates', {})
 
         for name in crates:
-            tab = DroppableCrateTab(name, f"📁 {name} ({len(crates[name])})")
+            tab = DroppableCrateTab(name, f" {name} ({len(crates[name])})")
+            tab.setIcon(qta.icon("fa5s.folder", color="#A39E9A"))
             tab.setCheckable(True)
             tab.clicked.connect(lambda checked, n=name: self._on_crate_selected(n))
             tab.track_dropped.connect(self._on_track_dropped_to_crate)
@@ -1364,7 +1428,8 @@ class MainWindow(QMainWindow):
             self.crate_tab_bar.addWidget(tab)
 
         for name in smart_crates:
-            tab = QPushButton(f"⚡ {name}")
+            tab = QPushButton(f" {name}")
+            tab.setIcon(qta.icon("fa5s.magic", color="#00E676"))
             tab.setCheckable(True)
             tab.clicked.connect(lambda checked, n=name: self._on_smart_crate_selected(n))
             self.crate_tab_bar.addWidget(tab)
@@ -1429,6 +1494,20 @@ class MainWindow(QMainWindow):
                 self._render_crate_tabs()
                 if self.active_crate == crate_name:
                     self._on_crate_selected(crate_name)
+                # Auto-sync to Serato
+                self.sync_crate_to_serato(crate_name)
+
+    def sync_crate_to_serato(self, crate_name):
+        crates = self.settings_manager.get('crates', {})
+        paths = crates.get(crate_name, [])
+        if not paths:
+            self.toast_manager.show_toast(f"Crate '{crate_name}' has no tracks.", toast_type="info")
+            return
+        try:
+            crate_file = SeratoCrateWriter.write_crate(crate_name, paths)
+            self.toast_manager.show_toast(f"Synced '{crate_name}' to Serato: {os.path.basename(crate_file)}", toast_type="success")
+        except Exception as e:
+            self.toast_manager.show_toast(f"Failed to sync Serato crate: {e}", toast_type="error")
 
     def _show_crate_context_menu(self, crate_name, pos):
         menu = QMenu(self)
@@ -1436,11 +1515,14 @@ class MainWindow(QMainWindow):
             QMenu { background-color: #212133; color: #E8E3DF; border: 1px solid #3B3633; padding: 4px; border-radius: 4px; }
             QMenu::item:selected { background-color: #3B3633; }
         """)
+        serato_action = menu.addAction("Sync to Serato (.crate)...")
         export_action = menu.addAction("Export Crate to M3U Playlist...")
         rename_action = menu.addAction("Rename Crate")
         delete_action = menu.addAction("Delete Crate")
         action = menu.exec(pos)
-        if action == export_action:
+        if action == serato_action:
+            self.sync_crate_to_serato(crate_name)
+        elif action == export_action:
             self.export_current_crate(crate_name)
         elif action == delete_action:
             if QMessageBox.question(self, "Delete Crate", f"Delete crate '{crate_name}'?") == QMessageBox.StandardButton.Yes:

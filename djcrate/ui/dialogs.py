@@ -272,8 +272,8 @@ class MixSplitterDialog(QDialog):
     """Dialog to parse tracklist timestamps and split long audio files."""
     def __init__(self, parent=None, default_file=""):
         super().__init__(parent)
-        self.setWindowTitle("✂️ Mix Splitter (Timestamp Parser)")
-        self.setMinimumSize(540, 420)
+        self.setWindowTitle("Mix Splitter (Timestamp Parser)")
+        self.setMinimumSize(560, 440)
         self.setStyleSheet("""
             QDialog { background-color: #1E1B1A; color: #E8E3DF; }
             QLabel { font-weight: bold; color: #A39E9A; }
@@ -304,7 +304,9 @@ class MixSplitterDialog(QDialog):
 
         # Action Buttons
         btn_box = QHBoxLayout()
-        self.split_btn = QPushButton(" ✂️ Split Mix")
+        self.split_btn = QPushButton("Split Mix")
+        import qtawesome as qta
+        self.split_btn.setIcon(qta.icon("fa5s.cut", color="#FFFFFF"))
         self.split_btn.setStyleSheet("background-color: #FF5500; color: #FFFFFF; font-weight: bold; padding: 8px 16px;")
         self.split_btn.clicked.connect(self.accept)
 
