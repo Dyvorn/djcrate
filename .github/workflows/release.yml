@@ -57,10 +57,17 @@ jobs:
           files: Releases/DJ_Crate_Installer.exe
           name: DJ Crate ${{ github.ref_name }}
           body: |
-            ## DJ Crate Release ${{ github.ref_name }}
+            ## 💿 DJ Crate ${{ github.ref_name }}
             
-            ### Installation:
-            Download and run `DJ_Crate_Installer.exe` to install or update DJ Crate on your system.
+            Welcome to the release of DJ Crate ${{ github.ref_name }}! 
+            
+            ### 🛠 Installation Instructions
+            1. Download the **`DJ_Crate_Installer.exe`** file below.
+            2. Run the installer to set up DJ Crate on your system.
+            
+            ---
+            ### 📝 Release Notes
+          generate_release_notes: true
           draft: false
           prerelease: false
         env:
