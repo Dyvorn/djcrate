@@ -62,29 +62,33 @@ jobs:
           body: |
             ## 🎛️ DJ Crate ${{ github.ref_name }}
 
-            Welcome to **DJ Crate ${{ github.ref_name }}**! This update introduces major architectural foundations, automated metadata tagging, and UI visual improvements.
+            Welcome to **DJ Crate ${{ github.ref_name }}**! This release brings professional DJ software integration, mix splitting tools, crate playlist export, and enhanced metadata controls.
 
             ---
 
             ### 🚀 What's New in this Release
 
-            #### 🗄️ SQLite Database Architecture
-            - **Seamless Migration**: Automatically migrates old `settings.json` data into a fast, relational `djcrate.db` SQLite database.
-            - **Performance**: High-speed library indexing, history queries, and smart crate processing.
-            - **Future Proofing**: Prepares the codebase for cloud sync and user account integration.
+            #### 🎧 Direct DJ Software Drag & Drop
+            - Drag single or multiple tracks directly into **Serato DJ**, **Rekordbox**, **Traktor**, or Windows Explorer.
 
-            #### 🎵 Advanced Metadata & Cover Art Engine
-            - **iTunes Integration**: Automatically fetches official artist, title, album, and high-resolution cover art from iTunes upon download completion.
-            - **ID3 Tag Embedding**: Directly embeds ID3 tags (`APIC`, `TPE1`, `TIT2`, `TALB`) into `.mp3` and `.flac` files for compatibility with Rekordbox, Serato, and DJ Crate.
+            #### ✂️ Mix Splitter (Timestamp Parser)
+            - Parse tracklist timestamps (e.g. `00:00 Intro`, `03:45 Song`) to automatically cut long audio DJ mixes into tagged individual tracks via `FFmpeg`.
 
-            #### 🎨 UI & Startup Experience Overhaul
-            - **Juicy Startup Screen**: Replaced the basic splash screen with a dark radial gradient, glowing headphone artwork, floating drop shadow, and animated equalizer bars.
-            - **Responsive Scaling**: Improved splash screen dimensions and smooth opacity transitions.
+            #### 📁 Crate M3U / M3U8 Playlist Export
+            - Export manual and smart crates to standard `.m3u8` playlists for seamless import into DJ software.
 
-            #### 🐛 Bug Fixes & Stability Improvements
-            - **Startup Directory Crash Fix**: Fixed `FileNotFoundError` when `musicPath` points to an invalid or missing user directory (added graceful fallback to `APPDATA/DJ Crate/Music`).
-            - **Qt Effect Conflict Fix**: Resolved `QPainter` rendering conflicts during splash screen rendering by animating window opacity directly.
-            - **Import & Variable Fixes**: Fixed `QGraphicsDropShadowEffect` missing import and `QColor` scope issues.
+            #### 🎵 Beatport Catalog Integration
+            - Automatic Beatport search fallback for electronic, techno, house, and underground music metadata & cover art when iTunes returns no results.
+
+            #### 🏷️ Bulk Metadata Tag Editor
+            - Multi-select tracks in your library and batch-edit Artist, Album, Genre, and Release Year in a single dialog.
+
+            #### 🎚️ Pitch / Tempo Slider & Collapsible Sidebar
+            - **Pitch Fader**: Test track speed adjustments (-20% to +20%) with reset button directly on the player bar.
+            - **Collapsible Sidebar**: Switch between full text mode and icon-only mode to save horizontal space on laptop screens.
+
+            #### ⚡ Persistent Artwork Caching
+            - Artwork cached persistently in `~/.djcrate_cache/thumbs/` for faster search performance across application launches.
 
             ---
 
@@ -105,3 +109,4 @@ jobs:
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: "--use-system-ca"
