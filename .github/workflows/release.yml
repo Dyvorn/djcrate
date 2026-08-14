@@ -66,6 +66,11 @@ jobs:
           }
           Write-Host "Build OK: dist\DJ Crate\DJ Crate.exe"
 
+      - name: Generate Installer Graphics
+        shell: pwsh
+        run: |
+          python assets/generate_installer_assets.py
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
@@ -95,16 +100,19 @@ jobs:
 
             > _See the auto-generated release notes below for the full commit list._
 
-            ### ✨ v0.3.2 — Harmonic Engine & Architecture Refinement
+            ### ✨ v0.4.0 — Professional Audio UI/UX, Customization & Custom Installer
 
-            - **Harmonic Mixing & Live Pitch Shift:** Real-time dynamic BPM and semitone musical key transposition as the preview pitch slider moves (-20% to +20%).
-            - **Expanded Smart Crates:** Rule-based smart crates now support harmonic key compatibility (`compatible_with`), BPM ranges, ratings, genres, and years.
-            - **Multi-Format Crate Exporters:** Export manual and smart crates to standard `.m3u8` with `#EXTINF` tags, `.csv` (for Serato, Rekordbox, and Excel), and clean formatted `.txt` tracklists.
-            - **Architecture & Database Layer:** Reunified `DatabaseManager` with pooled SQLAlchemy sessions, thread-safe connection cleanup, and full ORM compatibility.
-            - **Camelot Harmonic Color Badges:** Circle-of-fifths color coding for Camelot keys in the library and search views.
-            - **Live OBS Streamer Overlay:** Updated glassmorphic OBS overlay with dynamic live pitch-transposed BPM and key tags.
-            - **Automated Testing & Organization:** Reorganized workspace with dedicated `tests/` directory and 28 automated tests (100% passing).
-            - **Comprehensive Documentation:** Fully revamped professional open-source `README.md`.
+            - **Tactile Pro-Audio Workstation UI:** Deep obsidian/matte console palette (`#0E0E10`, `#16161A`, `#1E1E24`, `#26262E`) with 1px precision borders and authentic hardware feel.
+            - **Custom Color Picker & Console Presets:** Select any custom hex accent color with live QSS updates, plus curated DJ hardware presets (*Pioneer Blue, Technics Amber, Serato Red, Xone Slate, Emerald Green, Rust Amber*).
+            - **Library Row Density Modes:** Easily switch between *Standard*, *Compact (DJ Laptop)*, and *Comfortable* views with dynamic font and padding scaling.
+            - **Camelot Harmonic Key Filter Bar:** One-click horizontal scroll strip (`ALL`, `1A`–`12B`) to instantly filter tracks harmonically.
+            - **Format & Status Filter Chips:** Quick filter pills for `ALL`, `MP3`, `WAV`, `FLAC`, `4★+`, and `Needs Analysis`.
+            - **Track Inspector Side Drawer:** Collapsible inspector displaying high-res album art, ID3 tags, Camelot key, BPM, and one-click actions (*Analyze, Edit Tags, Reveal in Explorer*).
+            - **Live Audio Stream Previewing:** Instant live audio playback for online discovery tracks before downloading via real-time stream resolution.
+            - **Interactive Hover Waveform Scrubber:** Precision timestamp tooltip (`02:14`) dynamically tracking cursor position across the waveform.
+            - **DJ Quick-Jump & Nudge Buttons:** Quick-seek jump buttons (`-30s`, `-10s`, `+10s`, `+30s`), pitch nudge (`-1%`, `+1%`), pitch reset (`RST`), and mute toggle (`M`).
+            - **Keyboard Shortcuts Cheat Sheet:** Interactive hotkey help modal accessible anytime via `F1` or `?`.
+            - **Custom-Branded Windows Installer:** Modern Inno Setup wizard with 24-bit custom branding, low-privilege install options, and complete uninstaller registry metadata.
 
             ---
 

@@ -29,26 +29,36 @@ Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers ins
 
 ## ✨ Core Capabilities
 
-### 🎧 1. Harmonic Mixing Engine & Live Pitch Shift
-- **Camelot Wheel System**: Accurately maps musical keys to the 1A–12B Camelot notation (Circle of Fifths).
+### 🎛️ 1. Authentic Pro-Audio Workstation & Customization
+- **Tactile Console Aesthetics**: Deep obsidian and matte charcoal theme (`#0E0E10`, `#16161A`, `#1E1E24`, `#26262E`) with 1px precision borders and clean typography without blurry AI neon glow.
+- **Custom Hex Color Picker & Hardware Presets**: Customize your console accent color to any hex value with live QSS theming, plus hardware presets (*Pioneer Blue, Technics Amber, Serato Red, Xone Slate, Emerald Green, Rust Amber*).
+- **Library Density Modes**: Tailor your workspace density for high-DPI screens or compact DJ laptop displays (*Standard*, *Compact*, *Comfortable*).
+- **Track Inspector Side Drawer**: Collapsible inspector displaying full ID3 metadata, Camelot keys, BPM, duration, format, file size, and quick actions (*Analyze, Edit Tags, Reveal in Explorer*).
+
+### 🎧 2. Harmonic Mixing Engine & Live Pitch Shift
+- **Camelot Quick-Filter Bar**: Scrollable strip of color-coded Camelot pills (`ALL`, `1A`–`12B`) to filter the library by key with one click.
+- **Format & Status Filter Chips**: Instant filter chips for `ALL`, `MP3`, `WAV`, `FLAC`, `4★+`, and `Needs Analysis`.
 - **Live Pitch & Semitone Transposition**: Moving the preview pitch fader (-20% to +20%) dynamically recalculates live effective BPM and transposed musical key (e.g. `128 BPM → 133.1 BPM (+4.0%) · 8A → 3A (+1 st)`).
+- **Live Stream Previewing**: Stream and audition online tracks in real-time before downloading.
+- **Interactive Hover Waveform Scrubber**: Dynamic hover time tooltip (`02:14`) tracking cursor position across the waveform with DJ quick jump (`-30s`, `-10s`, `+10s`, `+30s`) and pitch nudge (`-1%`, `+1%`) controls.
 - **Match Assistant & Gig Matcher**: Surfaces the most compatible tracks in your library ranked by harmonic compatibility (Exact, Relative Major/Minor, +/-1 Step Energy Shift, and Energy Boost Jumps) and tempo proximity.
 
-### 📁 2. Smart Crates & DJ Software Sync
+### 📁 3. Smart Crates & DJ Software Sync
 - **Dynamic Smart Crates**: Define rule-based smart crates with numeric and harmonic operators (e.g., `BPM >= 126`, `Key compatible_with 8A`, `Rating >= 4`).
 - **Native Binary Serato Crate Writer**: Automatically compiles native `.crate` binary structures directly into Serato's `_Serato_/Subcrates/` folder.
 - **Multi-Format Playlist Exporters**: Export manual and smart crates to **M3U8** (with extended `#EXTINF` metadata), **CSV** (for Rekordbox and Excel), or **Formatted Text Tracklists** for Mixcloud and 1001Tracklists.
 - **Drag & Drop Workflow**: Drag tracks directly out of DJ Crate into Serato DJ, Rekordbox, or your file system.
 
-### ✂️ 3. Mix Splitter & Audio Processing
+### ✂️ 4. Mix Splitter & Audio Processing
 - **Timestamp Parsing Engine**: Paste YouTube/SoundCloud tracklists (e.g., `00:00 Artist - Track`, `03:45 Remix`) to automatically cut multi-hour DJ sets into individual, perfectly tagged audio files via FFmpeg.
 - **SoundCloud Waveform Scrubber**: High-resolution waveform visualization with beat-grid cues, loudness meters (dBFS / peak clipping detection), and precision seeking.
 - **Bulk Metadata Editor**: Batch-update Artist, Album, Genre, Year, and ID3 tags across multiple selected tracks simultaneously.
 
-### 📡 4. Streamer & Live Performance HUDs
+### 📡 5. Streamer & Live Performance HUDs
 - **Live OBS Stream Overlay**: Automatically generates `now_playing.html` (glassmorphic animated stream widget) and `now_playing.txt` for OBS Studio and Streamlabs.
 - **Floating Clipboard Grabber**: Non-intrusive bottom-right HUD that slides into view when a supported media URL is copied, enabling one-click background downloading without switching windows.
 - **Always-On-Top Mini Player**: Ultra-compact 340×90px floating player designed to remain docked over Serato or Rekordbox during preparation sessions.
+- **Keyboard Shortcuts Cheat Sheet**: Press `F1` or `?` anytime for an interactive DJ hotkey cheat sheet.
 
 ---
 

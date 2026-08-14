@@ -4,7 +4,7 @@ import math
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QSlider,
     QProgressBar, QStackedWidget, QComboBox, QListWidget, QDialog,
-    QTextEdit, QApplication, QGraphicsOpacityEffect, QGridLayout
+    QTextEdit, QApplication, QGraphicsOpacityEffect, QGridLayout, QScrollArea
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, QPoint, QRect, QTimer, QUrl, QMimeData,
@@ -157,7 +157,7 @@ class PlayerSlider(QSlider):
         painter.setPen(QPen(QColor("#2C2A29"), 1))
         painter.drawLine(0, y_base + 1, w, y_base + 1)
 
-        # Hover position line
+        # Hover position line and time badge
         if self.hover_x >= 0 and self.hover_x != progress_x:
             hover_pen = QPen(QColor("rgba(255, 255, 255, 0.6)"))
             hover_pen.setWidth(1)
@@ -165,6 +165,21 @@ class PlayerSlider(QSlider):
             painter.setPen(hover_pen)
             painter.setOpacity(0.8)
             painter.drawLine(self.hover_x, 0, self.hover_x, h)
+            
+            # Hover time tooltip badge
+            if self.total_duration_secs > 0:
+                hover_ratio = self.hover_x / max(1, w)
+                hover_secs = int(hover_ratio * self.total_duration_secs)
+                hover_str = f"{hover_secs // 60}:{hover_secs % 60:02d}"
+                
+                tooltip_w = 42
+                tooltip_x = max(2, min(w - tooltip_w - 2, self.hover_x - tooltip_w // 2))
+                tooltip_rect = QRect(tooltip_x, 2, tooltip_w, 16)
+                painter.setBrush(QColor("#181820"))
+                painter.setPen(QPen(QColor("#3E3E4C"), 1))
+                painter.drawRoundedRect(tooltip_rect, 3, 3)
+                painter.setPen(QColor("#EDEDED"))
+                painter.drawText(tooltip_rect, Qt.AlignmentFlag.AlignCenter, hover_str)
 
         # Timestamp Badges (SoundCloud style)
         if self.isEnabled() and self.total_duration_secs > 0:
@@ -559,6 +574,7 @@ class NowPlayingIndicator(QWidget):
 
 class SearchResultCard(QWidget):
     download_requested = pyqtSignal(str, str, int, str)
+    preview_requested = pyqtSignal(dict)
 
     def __init__(self, result, default_format='MP3', parent=None):
         super().__init__(parent)
@@ -568,7 +584,7 @@ class SearchResultCard(QWidget):
         self.setup_ui()
 
     def enterEvent(self, event):
-        self.setStyleSheet("SearchResultCard { background-color: #282423; border-radius: 8px; }")
+        self.setStyleSheet("SearchResultCard { background-color: #24242C; border-radius: 8px; }")
         if hasattr(self, 'thumb_overlay'):
             self.thumb_overlay.show()
         if hasattr(self, 'thumb_label') and hasattr(self.thumb_label, 'zoom_in'):
@@ -583,6 +599,13 @@ class SearchResultCard(QWidget):
             self.thumb_label.zoom_out()
         super().leaveEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.preview_requested.emit(self.result)
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
+
     def setup_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -590,6 +613,8 @@ class SearchResultCard(QWidget):
 
         self.thumb_container = QWidget()
         self.thumb_container.setFixedSize(88, 50)
+        self.thumb_container.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.thumb_container.setToolTip("Click to stream & preview track")
         thumb_layout = QGridLayout(self.thumb_container)
         thumb_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -609,6 +634,9 @@ class SearchResultCard(QWidget):
         thumb_layout.addWidget(self.thumb_label, 0, 0)
         thumb_layout.addWidget(self.thumb_overlay, 0, 0)
         layout.addWidget(self.thumb_container)
+
+        # Allow clicking the thumbnail container to trigger preview
+        self.thumb_container.mousePressEvent = lambda e: self.preview_requested.emit(self.result)
 
         details_layout = QVBoxLayout()
         details_layout.setSpacing(2)
@@ -1479,6 +1507,11 @@ class ZoomingThumbnail(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
+        from PyQt6.QtGui import QPainterPath
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, float(self.width()), float(self.height()), 4.0, 4.0)
+        painter.setClipPath(path)
+
         cw, ch = self.width(), self.height()
         pw = int(cw * self._scale)
         ph = int(ch * self._scale)
@@ -1538,3 +1571,271 @@ class FadingStackedWidget(QStackedWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.overlay_label.resize(self.size())
+
+
+# ─── Pro-Audio Track Inspector Side Drawer ──────────────────────────────────
+
+class TrackInspectorWidget(QWidget):
+    """
+    Collapsible side-drawer displaying high-res cover artwork,
+    rich ID3 metadata, technical audio metrics (BPM, Camelot Key, Bitrate, Format, Size),
+    and quick action buttons (Analyze, Tag Editor, Reveal in Explorer).
+    """
+    analyze_requested = pyqtSignal(str)
+    edit_tags_requested = pyqtSignal(str)
+    reveal_requested = pyqtSignal(str)
+    close_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_track = None
+        self.setFixedWidth(270)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        # Header with Close Button
+        header_layout = QHBoxLayout()
+        header_lbl = QLabel("TRACK INSPECTOR")
+        header_lbl.setStyleSheet("font-size: 11px; font-weight: 700; color: #8E8E98; letter-spacing: 1px;")
+        header_layout.addWidget(header_lbl)
+        header_layout.addStretch()
+
+        close_btn = QPushButton()
+        close_btn.setIcon(qta.icon("fa5s.times", color="#8E8E98"))
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("background: transparent; border: none; border-radius: 3px;")
+        close_btn.clicked.connect(self.close_requested.emit)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # Artwork Card
+        self.art_label = QLabel()
+        self.art_label.setFixedSize(246, 160)
+        self.art_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.art_label.setStyleSheet("background-color: #1A1A20; border: 1px solid #282832; border-radius: 6px;")
+        self.art_label.setPixmap(qta.icon("fa5s.compact-disc", color="#383844").pixmap(64, 64))
+        layout.addWidget(self.art_label)
+
+        # Title & Artist
+        self.title_lbl = QLabel("Select a track")
+        self.title_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #FFFFFF;")
+        self.title_lbl.setWordWrap(True)
+        layout.addWidget(self.title_lbl)
+
+        self.artist_lbl = QLabel("—")
+        self.artist_lbl.setStyleSheet("font-size: 12px; color: #A0A0AA;")
+        self.artist_lbl.setWordWrap(True)
+        layout.addWidget(self.artist_lbl)
+
+        # Metrics Grid (BPM, Key, Duration, Format)
+        self.metrics_frame = QWidget()
+        self.metrics_frame.setStyleSheet("background-color: #16161A; border: 1px solid #26262E; border-radius: 6px; padding: 6px;")
+        grid = QGridLayout(self.metrics_frame)
+        grid.setContentsMargins(6, 6, 6, 6)
+        grid.setSpacing(6)
+
+        grid.addWidget(QLabel("BPM"), 0, 0)
+        self.bpm_val = QLabel("—")
+        self.bpm_val.setStyleSheet("font-weight: 700; color: #FFFFFF;")
+        grid.addWidget(self.bpm_val, 0, 1)
+
+        grid.addWidget(QLabel("KEY"), 0, 2)
+        self.key_val = QLabel("—")
+        self.key_val.setStyleSheet("font-weight: 700; color: #00E5FF;")
+        grid.addWidget(self.key_val, 0, 3)
+
+        grid.addWidget(QLabel("TIME"), 1, 0)
+        self.time_val = QLabel("—")
+        self.time_val.setStyleSheet("color: #FFFFFF;")
+        grid.addWidget(self.time_val, 1, 1)
+
+        grid.addWidget(QLabel("FORMAT"), 1, 2)
+        self.format_val = QLabel("—")
+        self.format_val.setStyleSheet("color: #FFFFFF;")
+        grid.addWidget(self.format_val, 1, 3)
+
+        layout.addWidget(self.metrics_frame)
+
+        # File Specs Details
+        self.details_lbl = QLabel("Size: —\nLocation: —")
+        self.details_lbl.setStyleSheet("font-size: 11px; color: #72727D; line-height: 1.4;")
+        self.details_lbl.setWordWrap(True)
+        layout.addWidget(self.details_lbl)
+
+        layout.addStretch()
+
+        # Action Buttons
+        btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(6)
+
+        self.btn_analyze = QPushButton(" Analyze BPM & Key")
+        self.btn_analyze.setIcon(qta.icon("fa5s.wave-square", color="#EDEDED"))
+        self.btn_analyze.clicked.connect(self._on_analyze)
+        btn_layout.addWidget(self.btn_analyze)
+
+        self.btn_edit = QPushButton(" Edit Metadata Tags")
+        self.btn_edit.setIcon(qta.icon("fa5s.tags", color="#EDEDED"))
+        self.btn_edit.clicked.connect(self._on_edit)
+        btn_layout.addWidget(self.btn_edit)
+
+        self.btn_reveal = QPushButton(" Reveal in Explorer")
+        self.btn_reveal.setIcon(qta.icon("fa5s.folder-open", color="#EDEDED"))
+        self.btn_reveal.clicked.connect(self._on_reveal)
+        btn_layout.addWidget(self.btn_reveal)
+
+        layout.addLayout(btn_layout)
+
+    def set_track(self, track_info: dict):
+        self.current_track = track_info
+        if not track_info:
+            self.title_lbl.setText("Select a track")
+            self.artist_lbl.setText("—")
+            self.bpm_val.setText("—")
+            self.key_val.setText("—")
+            self.time_val.setText("—")
+            self.format_val.setText("—")
+            self.details_lbl.setText("Size: —\nLocation: —")
+            self.art_label.setPixmap(qta.icon("fa5s.compact-disc", color="#383844").pixmap(64, 64))
+            return
+
+        title = track_info.get("title", "Unknown Title")
+        artist = track_info.get("artist", "Unknown Artist")
+        bpm = track_info.get("bpm", "") or "—"
+        key = track_info.get("key", "") or "—"
+        duration = track_info.get("duration", 0)
+        file_path = track_info.get("path", "")
+
+        self.title_lbl.setText(title)
+        self.artist_lbl.setText(artist)
+        self.bpm_val.setText(str(bpm))
+        
+        # Color-coded key
+        if key and key != "—":
+            color = CamelotMatcher.get_camelot_color(key)
+            self.key_val.setStyleSheet(f"font-weight: 700; color: {color};")
+            self.key_val.setText(key)
+        else:
+            self.key_val.setStyleSheet("font-weight: 700; color: #8E8E98;")
+            self.key_val.setText("—")
+
+        if duration:
+            mins = int(duration) // 60
+            secs = int(duration) % 60
+            self.time_val.setText(f"{mins}:{secs:02d}")
+        else:
+            self.time_val.setText("—")
+
+        ext = os.path.splitext(file_path)[1].lstrip('.').upper() or "AUDIO"
+        self.format_val.setText(ext)
+
+        # File size
+        size_str = "—"
+        if os.path.exists(file_path):
+            size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            size_str = f"{size_mb:.1f} MB"
+
+        fn = os.path.basename(file_path)
+        self.details_lbl.setText(f"File: {fn}\nSize: {size_str}\nPath: {os.path.dirname(file_path)}")
+
+    def _on_analyze(self):
+        if self.current_track and self.current_track.get("path"):
+            self.analyze_requested.emit(self.current_track["path"])
+
+    def _on_edit(self):
+        if self.current_track and self.current_track.get("path"):
+            self.edit_tags_requested.emit(self.current_track["path"])
+
+    def _on_reveal(self):
+        if self.current_track and self.current_track.get("path"):
+            self.reveal_requested.emit(self.current_track["path"])
+
+
+# ─── Pro-DJ Keyboard Shortcuts Cheat Sheet ──────────────────────────────────
+
+class KeyboardShortcutsDialog(QDialog):
+    """
+    Pro-DJ Keyboard Shortcuts Cheat Sheet modal.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("DJ Crate — Keyboard Shortcuts")
+        self.setFixedSize(540, 460)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        title_lbl = QLabel("KEYBOARD SHORTCUTS & DJ CONTROLS")
+        title_lbl.setStyleSheet("font-size: 14px; font-weight: 700; color: #FFFFFF; letter-spacing: 1px;")
+        layout.addWidget(title_lbl)
+
+        shortcuts = [
+            ("Playback & Audition", [
+                ("Space", "Play / Pause Active Track"),
+                ("Left / Right", "Jump -10s / +10s"),
+                ("Shift + Left / Right", "Jump -30s / +30s"),
+                ("Up / Down", "Volume Up / Down (5%)"),
+                ("M", "Mute / Unmute Audio"),
+            ]),
+            ("Navigation & Search", [
+                ("Ctrl + F", "Focus Search Bar"),
+                ("Ctrl + 1", "Search View"),
+                ("Ctrl + 2", "Library View"),
+                ("Ctrl + 3", "Crates View"),
+                ("Ctrl + 4", "Downloads Queue"),
+                ("Ctrl + 5", "Settings"),
+            ]),
+            ("Library & Organization", [
+                ("Delete / Backspace", "Remove Selected Track from Crate"),
+                ("Ctrl + E", "Open Metadata Tag Editor"),
+                ("F1 or ?", "Open Shortcuts Cheat Sheet"),
+                ("Esc", "Close Dialogs / Deselect"),
+            ])
+        ]
+
+        scroll = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(12)
+
+        for category, items in shortcuts:
+            cat_lbl = QLabel(category.upper())
+            cat_lbl.setStyleSheet("font-size: 11px; font-weight: 700; color: #8E8E98; letter-spacing: 1px; margin-top: 4px;")
+            scroll_layout.addWidget(cat_lbl)
+
+            card = QWidget()
+            card.setStyleSheet("background-color: #16161A; border: 1px solid #282832; border-radius: 6px; padding: 6px;")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 8, 10, 8)
+            card_layout.setSpacing(6)
+
+            for key, desc in items:
+                row = QHBoxLayout()
+                key_badge = QLabel(key)
+                key_badge.setStyleSheet("background-color: #24242C; color: #FFFFFF; font-weight: 700; font-size: 11px; border: 1px solid #3A3A46; border-radius: 4px; padding: 2px 8px;")
+                desc_lbl = QLabel(desc)
+                desc_lbl.setStyleSheet("color: #C0C0CA; font-size: 12px;")
+                row.addWidget(key_badge)
+                row.addSpacing(8)
+                row.addWidget(desc_lbl)
+                row.addStretch()
+                card_layout.addLayout(row)
+
+            scroll_layout.addWidget(card)
+
+        scroll.setWidget(scroll_widget)
+        scroll.setWidgetResizable(True)
+        layout.addWidget(scroll)
+
+        close_btn = QPushButton("Done")
+        close_btn.setStyleSheet("font-weight: 700; padding: 8px 16px;")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+

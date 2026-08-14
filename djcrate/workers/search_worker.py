@@ -148,19 +148,89 @@ class ThumbnailDownloader(QThread):
         self.url = url
 
     def run(self):
-        if not self.url:
+        if not self.url and not self.video_id:
             return
         try:
             cache_dir = os.path.join(os.path.expanduser('~'), '.djcrate_cache', 'thumbs')
             os.makedirs(cache_dir, exist_ok=True)
-            local_path = os.path.join(cache_dir, f"{self.video_id}.jpg")
+            safe_id = "".join(c for c in self.video_id if c.isalnum() or c in ('-', '_'))
+            local_path = os.path.join(cache_dir, f"{safe_id}.jpg")
 
             if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
-                req = urllib.request.Request(self.url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    with open(local_path, 'wb') as f:
-                        f.write(response.read())
+                urls_to_try = []
+                if self.url:
+                    urls_to_try.append(self.url)
+                if safe_id:
+                    urls_to_try.append(f"https://img.youtube.com/vi/{safe_id}/hqdefault.jpg")
+                    urls_to_try.append(f"https://img.youtube.com/vi/{safe_id}/mqdefault.jpg")
 
-            self.downloaded.emit(self.video_id, local_path)
+                downloaded = False
+                for u in urls_to_try:
+                    try:
+                        req = urllib.request.Request(u, headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+                        })
+                        with urllib.request.urlopen(req, timeout=6) as response:
+                            data = response.read()
+                            if len(data) > 500:  # Valid image data
+                                with open(local_path, 'wb') as f:
+                                    f.write(data)
+                                downloaded = True
+                                break
+                    except Exception:
+                        continue
+
+                if not downloaded:
+                    return
+
+            if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                self.downloaded.emit(self.video_id, local_path)
         except Exception:
             pass
+
+
+class StreamResolverThread(QThread):
+    stream_ready = pyqtSignal(dict, str)  # track_dict, stream_url
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, track, ytdlp_path='yt-dlp', cookies_path='', parent=None):
+        super().__init__(parent)
+        self.track = track
+        self.ytdlp_path = ytdlp_path or 'yt-dlp'
+        self.cookies_path = cookies_path
+
+    def run(self):
+        url = self.track.get('url')
+        if not url:
+            self.error_occurred.emit("No URL available to resolve stream.")
+            return
+
+        args = [self.ytdlp_path, '-g', '-f', 'ba/b', '--no-warnings', '--socket-timeout', '10', url]
+        if self.cookies_path and os.path.exists(self.cookies_path):
+            args.extend(['--cookies', self.cookies_path])
+
+        try:
+            creationflags = 0
+            if sys.platform == 'win32':
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            proc = subprocess.Popen(
+                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding='utf-8', errors='replace',
+                creationflags=creationflags
+            )
+            stdout, stderr = proc.communicate()
+            stream_url = ""
+            for line in stdout.splitlines():
+                if line.strip().startswith("http"):
+                    stream_url = line.strip()
+                    break
+
+            if stream_url:
+                self.stream_ready.emit(self.track, stream_url)
+            else:
+                self.error_occurred.emit(f"Could not resolve live audio stream: {stderr.strip() or 'No direct audio URL returned.'}")
+        except Exception as e:
+            self.error_occurred.emit(f"Stream resolver error: {str(e)}")
+

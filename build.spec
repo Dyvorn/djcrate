@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# DJ Crate build.spec — PyInstaller configuration for v0.3.2
+# DJ Crate build.spec — PyInstaller configuration for v0.4.0
 # Generates a one-folder Windows executable bundled via COLLECT.
 # Inno Setup then wraps the dist/ folder into a single installer exe.
 

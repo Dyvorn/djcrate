@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QStackedWidget, QScrollArea, QMenu,
     QMessageBox, QSizeGrip, QInputDialog, QSpinBox, QGraphicsOpacityEffect,
     QGraphicsDropShadowEffect, QCheckBox, QSystemTrayIcon, QButtonGroup,
-    QGridLayout, QSizePolicy, QDialog, QApplication
+    QGridLayout, QSizePolicy, QDialog, QApplication, QColorDialog
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QPoint, QSize, QUrl, QMimeData, QTimer,
@@ -36,12 +36,13 @@ from djcrate.ui.widgets import (
     PlayerSlider, VolumeSlider, ClickableLabel, LoadingSpinner,
     ToastNotification, ToastManager, EqualizerWidget, NowPlayingIndicator,
     LoudnessMeterWidget, SearchResultCard, StarRatingWidget, LibraryTrackRow, LibraryHeaderWidget,
-    DraggableTrackList, DroppableCrateTab, QueueItemRow, HistoryItemRow, TitleBar, FadingStackedWidget
+    DraggableTrackList, DroppableCrateTab, QueueItemRow, HistoryItemRow, TitleBar, FadingStackedWidget,
+    TrackInspectorWidget, KeyboardShortcutsDialog
 )
 from djcrate.ui.dialogs import SmartCrateDialog, LogDialog, MetadataEditorDialog, BulkMetadataEditorDialog, MixSplitterDialog
 from djcrate.ui.mini_player import MiniPlayerWindow
 from djcrate.workers import (
-    SearchThread, ThumbnailDownloader, DownloadThread,
+    SearchThread, ThumbnailDownloader, DownloadThread, StreamResolverThread,
     MetadataProbeThread, AnalysisThread, AutoTagThread, WaveformGeneratorThread, MixSplitterThread
 )
 from djcrate.updater import AutoUpdaterThread
@@ -79,6 +80,11 @@ class MainWindow(QMainWindow):
 
         self.shuffle_enabled = False
         self.loop_mode = 0
+
+        self.active_camelot_key = "ALL"
+        self.active_format_filter = "ALL"
+        self.camelot_pill_buttons = {}
+        self.format_chip_buttons = {}
 
         self._is_muted = False
         self._pre_mute_volume = 80
@@ -165,7 +171,8 @@ class MainWindow(QMainWindow):
     def apply_theme(self):
         accent = self.settings_manager.get('accentColor', '#FF5500')
         theme = self.settings_manager.get('theme', 'Dark')
-        qss = ThemeEngine.generate_qss(accent, theme)
+        density = self.settings_manager.get('density', 'standard')
+        qss = ThemeEngine.generate_qss(accent, theme, density)
         self.setStyleSheet(qss)
         self._play_glow.setColor(QColor(accent))
         if hasattr(self, 'title_bar'):
@@ -174,6 +181,8 @@ class MainWindow(QMainWindow):
             self.equalizer.set_accent_color(accent)
         if hasattr(self, 'seek_slider'):
             self.seek_slider.set_accent_color(accent)
+        if hasattr(self, 'active_camelot_pill') and self.active_camelot_pill:
+            self._update_camelot_pill_styles()
 
     def _check_for_updates(self):
         self.updater_thread = AutoUpdaterThread(repo_owner="Dyvorn", repo_name="djcrate", parent=self)
@@ -341,82 +350,148 @@ class MainWindow(QMainWindow):
     def _create_library_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(8)
 
         # Row 1: Search & Sorting
         top_row = QHBoxLayout()
-        top_row.setSpacing(12)
+        top_row.setSpacing(10)
 
         self.lib_search_input = QLineEdit()
-        self.lib_search_input.setPlaceholderText("Filter library tracks by title or artist...")
-        self.lib_search_input.setFixedHeight(36)
+        self.lib_search_input.setPlaceholderText("Filter library tracks by title, artist, or tags...")
+        self.lib_search_input.setFixedHeight(34)
         self.lib_search_input.textChanged.connect(self.filter_library)
 
         self.lib_sort_combo = QComboBox()
         self.lib_sort_combo.addItems(["Date Added", "Title", "Artist", "BPM", "Duration", "Size", "Rating"])
-        self.lib_sort_combo.setFixedHeight(36)
+        self.lib_sort_combo.setFixedHeight(34)
         self.lib_sort_combo.currentIndexChanged.connect(self.filter_library)
 
         top_row.addWidget(self.lib_search_input, 1)
-        top_row.addWidget(QLabel("Sort By:"))
+        top_row.addWidget(QLabel("Sort:"))
         top_row.addWidget(self.lib_sort_combo)
         layout.addLayout(top_row)
 
-        # Row 2: Action Toolbar (spacious, un-cramped)
+        # Row 2: Interactive Camelot Harmonic Key Quick-Filter Strip
+        camelot_scroll = QScrollArea()
+        camelot_scroll.setFixedHeight(32)
+        camelot_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        camelot_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        camelot_scroll.setWidgetResizable(True)
+        camelot_scroll_w = QWidget()
+        camelot_strip = QHBoxLayout(camelot_scroll_w)
+        camelot_strip.setContentsMargins(0, 0, 0, 0)
+        camelot_strip.setSpacing(4)
+
+        keys = ["ALL", "1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B", "5A", "5B", "6A", "6B",
+                "7A", "7B", "8A", "8B", "9A", "9B", "10A", "10B", "11A", "11B", "12A", "12B"]
+        for k in keys:
+            btn = QPushButton(k)
+            btn.setCheckable(True)
+            btn.setProperty("filter_chip", "true")
+            btn.setFixedHeight(24)
+            if k == "ALL":
+                btn.setChecked(True)
+            btn.clicked.connect(lambda checked, key=k: self._on_camelot_pill_clicked(key))
+            camelot_strip.addWidget(btn)
+            self.camelot_pill_buttons[k] = btn
+        camelot_strip.addStretch()
+        camelot_scroll.setWidget(camelot_scroll_w)
+        layout.addWidget(camelot_scroll)
+
+        # Row 3: Format & Status Filter Chips
+        chips_row = QHBoxLayout()
+        chips_row.setSpacing(6)
+        chips = ["ALL", "MP3", "WAV", "FLAC", "4★+", "Needs Analysis"]
+        for c in chips:
+            btn = QPushButton(c)
+            btn.setCheckable(True)
+            btn.setProperty("filter_chip", "true")
+            btn.setFixedHeight(22)
+            if c == "ALL":
+                btn.setChecked(True)
+            btn.clicked.connect(lambda checked, chip=c: self._on_format_chip_clicked(chip))
+            chips_row.addWidget(btn)
+            self.format_chip_buttons[c] = btn
+        chips_row.addStretch()
+        layout.addLayout(chips_row)
+
+        # Row 4: Action Toolbar
         action_bar = QHBoxLayout()
-        action_bar.setSpacing(8)
+        action_bar.setSpacing(6)
 
         self.btn_match_assistant = QPushButton(" Match Assistant")
         self.btn_match_assistant.setIcon(qta.icon("fa5s.bolt", color="#00E676"))
         self.btn_match_assistant.setCheckable(True)
-        self.btn_match_assistant.setFixedHeight(32)
+        self.btn_match_assistant.setFixedHeight(30)
         self.btn_match_assistant.setToolTip("Harmonically match tracks in key, BPM & vibe with currently playing track")
         self.btn_match_assistant.toggled.connect(self.on_match_assistant_toggled)
 
         self.btn_gig_matcher = QPushButton(" Gig Overlay")
         self.btn_gig_matcher.setIcon(qta.icon("fa5s.external-link-alt", color="#00E676"))
-        self.btn_gig_matcher.setFixedHeight(32)
-        self.btn_gig_matcher.setToolTip("Launch ultra-compact live gig matcher overlay for Serato/Rekordbox")
+        self.btn_gig_matcher.setFixedHeight(30)
+        self.btn_gig_matcher.setToolTip("Launch live harmonic gig matcher overlay")
         self.btn_gig_matcher.clicked.connect(self.toggle_gig_matcher_overlay)
 
-        self.btn_analyze_lib = QPushButton(" Analyze BPM & Keys")
+        self.btn_analyze_lib = QPushButton(" Analyze BPM/Key")
         self.btn_analyze_lib.setIcon(qta.icon("fa5s.wave-square", color="#00E5FF"))
-        self.btn_analyze_lib.setFixedHeight(32)
-        self.btn_analyze_lib.setToolTip("Auto-detect BPM and Camelot Key for all unanalyzed tracks")
+        self.btn_analyze_lib.setFixedHeight(30)
+        self.btn_analyze_lib.setToolTip("Auto-detect BPM and Camelot Key for unanalyzed tracks")
         self.btn_analyze_lib.clicked.connect(self.start_library_analysis)
 
         self.btn_split_mix = QPushButton(" Split Mix")
         self.btn_split_mix.setIcon(qta.icon("fa5s.cut", color="#FF9800"))
-        self.btn_split_mix.setFixedHeight(32)
-        self.btn_split_mix.setToolTip("Parse timestamps & split long audio DJ sets into tracks")
+        self.btn_split_mix.setFixedHeight(30)
         self.btn_split_mix.clicked.connect(self.open_mix_splitter)
 
-        self.btn_clean_lib = QPushButton(" Clean Library")
+        self.btn_toggle_inspector = QPushButton(" Inspector")
+        self.btn_toggle_inspector.setIcon(qta.icon("fa5s.info-circle", color="#EDEDED"))
+        self.btn_toggle_inspector.setCheckable(True)
+        self.btn_toggle_inspector.setChecked(True)
+        self.btn_toggle_inspector.setFixedHeight(30)
+        self.btn_toggle_inspector.clicked.connect(self._toggle_inspector)
+
+        self.btn_clean_lib = QPushButton(" Clean")
         self.btn_clean_lib.setIcon(qta.icon("fa5s.broom", color="#A39E9A"))
-        self.btn_clean_lib.setFixedHeight(32)
+        self.btn_clean_lib.setFixedHeight(30)
         self.btn_clean_lib.clicked.connect(self.clean_library)
 
         action_bar.addWidget(self.btn_match_assistant)
         action_bar.addWidget(self.btn_gig_matcher)
         action_bar.addWidget(self.btn_analyze_lib)
         action_bar.addWidget(self.btn_split_mix)
+        action_bar.addWidget(self.btn_toggle_inspector)
         action_bar.addStretch()
         action_bar.addWidget(self.btn_clean_lib)
         layout.addLayout(action_bar)
 
         self.lib_stats_label = QLabel("0 tracks · Total Duration: 0:00 · 0 MB")
-        self.lib_stats_label.setStyleSheet("color: #8A8580; font-size: 11px; font-weight: 600;")
+        self.lib_stats_label.setStyleSheet("color: #8E8E98; font-size: 11px; font-weight: 600;")
         layout.addWidget(self.lib_stats_label)
 
         self.lib_header = LibraryHeaderWidget()
         self.lib_header.sort_requested.connect(self.on_header_sort_requested)
         layout.addWidget(self.lib_header)
 
+        # Track List + Inspector split view
+        list_container = QHBoxLayout()
+        list_container.setContentsMargins(0, 0, 0, 0)
+        list_container.setSpacing(8)
+
         self.track_list = DraggableTrackList()
         self.track_list.double_clicked_track.connect(self.preview_track)
+        self.track_list.itemClicked.connect(self._on_track_item_clicked)
         self.track_list.menu_requested.connect(self.show_track_context_menu)
-        layout.addWidget(self.track_list, 1)
+        list_container.addWidget(self.track_list, 1)
+
+        self.track_inspector = TrackInspectorWidget(self)
+        self.track_inspector.analyze_requested.connect(lambda p: self._run_analysis_thread([p]))
+        self.track_inspector.edit_tags_requested.connect(self._open_single_tag_editor)
+        self.track_inspector.reveal_requested.connect(self.reveal_in_explorer)
+        self.track_inspector.close_requested.connect(lambda: (self.track_inspector.hide(), self.btn_toggle_inspector.setChecked(False)))
+        list_container.addWidget(self.track_inspector)
+
+        layout.addLayout(list_container, 1)
 
         return page
 
@@ -558,7 +633,6 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
-        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content = QWidget()
@@ -569,23 +643,28 @@ class MainWindow(QMainWindow):
         theme_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #C47D63; letter-spacing: 1px;")
         c_layout.addWidget(theme_lbl)
 
+        # Accent Color with Preset and Custom Color Picker
         accent_box = QHBoxLayout()
         accent_box.addWidget(QLabel("Accent Color:"))
         
         self.accent_combo = QComboBox()
-        for hex_val, name in SettingsManager.ACCENT_PRESETS:
+        for hex_val, name in ThemeEngine.ACCENT_PRESETS:
             self.accent_combo.addItem(f"{name} ({hex_val})", hex_val)
         
-        idx = self.accent_combo.findData(self.settings_manager.get('accentColor', '#FF5500'))
+        idx = self.accent_combo.findData(self.settings_manager.get('accentColor', '#C47D63'))
         if idx >= 0:
             self.accent_combo.setCurrentIndex(idx)
         self.accent_combo.currentIndexChanged.connect(self.on_accent_changed)
-
         accent_box.addWidget(self.accent_combo)
+
+        self.btn_custom_color = QPushButton(" Custom Color...")
+        self.btn_custom_color.setIcon(qta.icon("fa5s.palette", color="#EDEDED"))
+        self.btn_custom_color.clicked.connect(self._pick_custom_color)
+        accent_box.addWidget(self.btn_custom_color)
         accent_box.addStretch()
         c_layout.addLayout(accent_box)
 
-        # Theme Selector
+        # Theme Selector & Library Density
         theme_box = QHBoxLayout()
         theme_box.addWidget(QLabel("Theme:"))
         self.theme_combo = QComboBox()
@@ -593,10 +672,20 @@ class MainWindow(QMainWindow):
         self.theme_combo.setCurrentText(self.settings_manager.get('theme', 'Dark'))
         self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
         theme_box.addWidget(self.theme_combo)
+
+        theme_box.addSpacing(16)
+        theme_box.addWidget(QLabel("Library Density:"))
+        self.density_combo = QComboBox()
+        self.density_combo.addItems(["Standard", "Compact (DJ Laptop)", "Comfortable"])
+        density_val = self.settings_manager.get('density', 'standard')
+        density_label_map = {"standard": "Standard", "compact": "Compact (DJ Laptop)", "comfortable": "Comfortable"}
+        self.density_combo.setCurrentText(density_label_map.get(density_val, "Standard"))
+        self.density_combo.currentTextChanged.connect(self._on_density_changed)
+        theme_box.addWidget(self.density_combo)
         theme_box.addStretch()
         c_layout.addLayout(theme_box)
 
-        # Window Opacity
+        # Window Opacity & Always on Top
         opacity_box = QHBoxLayout()
         opacity_box.addWidget(QLabel("Window Opacity:"))
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
@@ -612,6 +701,15 @@ class MainWindow(QMainWindow):
         opacity_box.addWidget(self.always_on_top_cb)
         opacity_box.addStretch()
         c_layout.addLayout(opacity_box)
+
+        # Shortcuts Cheat Sheet Quick Launcher
+        shortcuts_box = QHBoxLayout()
+        self.btn_show_shortcuts = QPushButton(" Open Keyboard Shortcuts Cheat Sheet (F1)")
+        self.btn_show_shortcuts.setIcon(qta.icon("fa5s.keyboard", color="#EDEDED"))
+        self.btn_show_shortcuts.clicked.connect(self.show_shortcuts_dialog)
+        shortcuts_box.addWidget(self.btn_show_shortcuts)
+        shortcuts_box.addStretch()
+        c_layout.addLayout(shortcuts_box)
 
         path_lbl = QLabel("STORAGE & DOWNLOADS")
         path_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #C47D63; letter-spacing: 1px;")
@@ -666,6 +764,7 @@ class MainWindow(QMainWindow):
         tool_box.addWidget(QLabel("Cookies file:"), 2, 0)
         self.cookies_input = QLineEdit(self.settings_manager.get('cookiesPath', ''))
         self.cookies_input.textChanged.connect(lambda t: self.settings_manager.set('cookiesPath', t))
+        tool_box.addWidget(self.cookies_input, 2, 1)
         c_layout.addLayout(tool_box)
 
         # Quick Actions Header
@@ -704,9 +803,9 @@ class MainWindow(QMainWindow):
         main_vbox.setContentsMargins(16, 10, 16, 10)
         main_vbox.setSpacing(8)
 
-        # ── Row 1: Track Info, Play Controls & Volume ──
+        # ── Row 1: Track Info, Play Controls, Jump Buttons & Volume ──
         top_row = QHBoxLayout()
-        top_row.setSpacing(16)
+        top_row.setSpacing(12)
 
         # Left Info
         left_info = QHBoxLayout()
@@ -726,10 +825,20 @@ class MainWindow(QMainWindow):
         left_info.addLayout(info)
         top_row.addLayout(left_info, 1)
 
-        # Center Controls
+        # Center Controls with Quick Jump Buttons
         ctrls = QHBoxLayout()
-        ctrls.setSpacing(10)
+        ctrls.setSpacing(5)
         ctrls.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.btn_skip_back_30 = QPushButton("-30s")
+        self.btn_skip_back_30.setFixedSize(38, 26)
+        self.btn_skip_back_30.setToolTip("Jump back 30 seconds (Shift + Left)")
+        self.btn_skip_back_30.clicked.connect(lambda: self._seek_relative(-30))
+
+        self.btn_skip_back_10 = QPushButton("-10s")
+        self.btn_skip_back_10.setFixedSize(38, 26)
+        self.btn_skip_back_10.setToolTip("Jump back 10 seconds (Left)")
+        self.btn_skip_back_10.clicked.connect(lambda: self._seek_relative(-10))
 
         self.play_btn = QPushButton()
         self.play_btn.setObjectName("play-btn")
@@ -744,11 +853,25 @@ class MainWindow(QMainWindow):
         self.stop_btn.setIcon(qta.icon("fa5s.stop", color="#A39E9A"))
         self.stop_btn.clicked.connect(self.stop_playback)
 
+        self.btn_skip_fwd_10 = QPushButton("+10s")
+        self.btn_skip_fwd_10.setFixedSize(38, 26)
+        self.btn_skip_fwd_10.setToolTip("Jump forward 10 seconds (Right)")
+        self.btn_skip_fwd_10.clicked.connect(lambda: self._seek_relative(10))
+
+        self.btn_skip_fwd_30 = QPushButton("+30s")
+        self.btn_skip_fwd_30.setFixedSize(38, 26)
+        self.btn_skip_fwd_30.setToolTip("Jump forward 30 seconds (Shift + Right)")
+        self.btn_skip_fwd_30.clicked.connect(lambda: self._seek_relative(30))
+
+        ctrls.addWidget(self.btn_skip_back_30)
+        ctrls.addWidget(self.btn_skip_back_10)
         ctrls.addWidget(self.play_btn)
         ctrls.addWidget(self.stop_btn)
+        ctrls.addWidget(self.btn_skip_fwd_10)
+        ctrls.addWidget(self.btn_skip_fwd_30)
         top_row.addLayout(ctrls)
 
-        # Right Meter, Pitch & Volume
+        # Right Meter, Pitch with Nudge & Volume with Mute
         right = QHBoxLayout()
         right.setSpacing(8)
 
@@ -756,40 +879,60 @@ class MainWindow(QMainWindow):
         right.addWidget(self.loudness_meter)
 
         pitch_box = QHBoxLayout()
-        pitch_box.setSpacing(4)
+        pitch_box.setSpacing(3)
         pitch_lbl = QLabel("PITCH")
-        pitch_lbl.setStyleSheet("color: #8A8580; font-size: 10px; font-weight: bold;")
+        pitch_lbl.setStyleSheet("color: #8E8E98; font-size: 10px; font-weight: bold;")
+
+        self.btn_nudge_down = QPushButton("-1%")
+        self.btn_nudge_down.setFixedSize(30, 20)
+        self.btn_nudge_down.setStyleSheet("font-size: 9px; padding: 0;")
+        self.btn_nudge_down.setToolTip("Nudge pitch down 1%")
+        self.btn_nudge_down.clicked.connect(lambda: self.pitch_slider.setValue(self.pitch_slider.value() - 1))
 
         self.pitch_slider = QSlider(Qt.Orientation.Horizontal)
         self.pitch_slider.setRange(-20, 20)
         self.pitch_slider.setValue(0)
-        self.pitch_slider.setFixedWidth(70)
+        self.pitch_slider.setFixedWidth(64)
         self.pitch_slider.setToolTip("Tempo adjustment (-20% to +20%)")
         self.pitch_slider.valueChanged.connect(self.on_pitch_changed)
 
+        self.btn_nudge_up = QPushButton("+1%")
+        self.btn_nudge_up.setFixedSize(30, 20)
+        self.btn_nudge_up.setStyleSheet("font-size: 9px; padding: 0;")
+        self.btn_nudge_up.setToolTip("Nudge pitch up 1%")
+        self.btn_nudge_up.clicked.connect(lambda: self.pitch_slider.setValue(self.pitch_slider.value() + 1))
+
         self.pitch_val_lbl = QLabel("0.0%")
         self.pitch_val_lbl.setStyleSheet("color: #00E5FF; font-size: 10px; font-weight: bold; font-family: monospace;")
-        self.pitch_val_lbl.setFixedWidth(40)
+        self.pitch_val_lbl.setFixedWidth(38)
 
         self.btn_reset_pitch = QPushButton("RST")
-        self.btn_reset_pitch.setFixedSize(28, 18)
-        self.btn_reset_pitch.setStyleSheet("background: #2A2725; color: #A39E9A; font-size: 9px; font-weight: bold; border-radius: 3px;")
+        self.btn_reset_pitch.setFixedSize(26, 18)
+        self.btn_reset_pitch.setStyleSheet("background: #24242C; color: #8E8E98; font-size: 9px; font-weight: bold; border-radius: 3px;")
         self.btn_reset_pitch.clicked.connect(lambda: self.pitch_slider.setValue(0))
 
         pitch_box.addWidget(pitch_lbl)
+        pitch_box.addWidget(self.btn_nudge_down)
         pitch_box.addWidget(self.pitch_slider)
+        pitch_box.addWidget(self.btn_nudge_up)
         pitch_box.addWidget(self.pitch_val_lbl)
         pitch_box.addWidget(self.btn_reset_pitch)
         right.addLayout(pitch_box)
 
-        self.vol_icon = QLabel()
-        self.vol_icon.setPixmap(qta.icon("fa5s.volume-up", color="#A39E9A").pixmap(16, 16))
+        # Mute Toggle & Volume Slider
+        self.btn_mute = QPushButton()
+        self.btn_mute.setFixedSize(26, 26)
+        self.btn_mute.setIcon(qta.icon("fa5s.volume-up", color="#EDEDED"))
+        self.btn_mute.setStyleSheet("background: transparent; border: none;")
+        self.btn_mute.setToolTip("Toggle Mute (M)")
+        self.btn_mute.clicked.connect(self.toggle_mute)
+
         self.volume_slider = VolumeSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setFixedWidth(90)
+        self.volume_slider.setFixedWidth(80)
         self.volume_slider.valueChanged.connect(self.on_volume_changed)
 
-        right.addWidget(self.vol_icon)
+        right.addWidget(self.btn_mute)
         right.addWidget(self.volume_slider)
         top_row.addLayout(right, 1)
 
@@ -830,22 +973,61 @@ class MainWindow(QMainWindow):
         # Playback
         QShortcut(QKeySequence(Qt.Key.Key_Space), self, self.toggle_play)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, self.stop_playback)
+        QShortcut(QKeySequence("M"), self, self.toggle_mute)
         # Seek
-        QShortcut(QKeySequence(Qt.Key.Key_Right), self, lambda: self._seek_relative(5))
-        QShortcut(QKeySequence(Qt.Key.Key_Left), self, lambda: self._seek_relative(-5))
-        QShortcut(QKeySequence("Shift+Right"), self, lambda: self._seek_relative(1))
-        QShortcut(QKeySequence("Shift+Left"), self, lambda: self._seek_relative(-1))
+        QShortcut(QKeySequence(Qt.Key.Key_Right), self, lambda: self._seek_relative(10))
+        QShortcut(QKeySequence(Qt.Key.Key_Left), self, lambda: self._seek_relative(-10))
+        QShortcut(QKeySequence("Shift+Right"), self, lambda: self._seek_relative(30))
+        QShortcut(QKeySequence("Shift+Left"), self, lambda: self._seek_relative(-30))
         # Volume
         QShortcut(QKeySequence(Qt.Key.Key_Up), self, lambda: self._adjust_volume(5))
         QShortcut(QKeySequence(Qt.Key.Key_Down), self, lambda: self._adjust_volume(-5))
         # Navigation
-        QShortcut(QKeySequence("1"), self, lambda: self.stacked_widget.setCurrentIndex(0))
-        QShortcut(QKeySequence("2"), self, lambda: self.stacked_widget.setCurrentIndex(1))
-        QShortcut(QKeySequence("3"), self, lambda: self.stacked_widget.setCurrentIndex(2))
-        QShortcut(QKeySequence("4"), self, lambda: self.stacked_widget.setCurrentIndex(3))
-        QShortcut(QKeySequence("5"), self, lambda: self.stacked_widget.setCurrentIndex(4))
-        # Focus search
+        QShortcut(QKeySequence("Ctrl+1"), self, lambda: self.stacked_widget.setCurrentIndex(0))
+        QShortcut(QKeySequence("Ctrl+2"), self, lambda: self.stacked_widget.setCurrentIndex(1))
+        QShortcut(QKeySequence("Ctrl+3"), self, lambda: self.stacked_widget.setCurrentIndex(2))
+        QShortcut(QKeySequence("Ctrl+4"), self, lambda: self.stacked_widget.setCurrentIndex(3))
+        QShortcut(QKeySequence("Ctrl+5"), self, lambda: self.stacked_widget.setCurrentIndex(4))
+        # Focus search & Help
         QShortcut(QKeySequence("Ctrl+F"), self, lambda: (self.stacked_widget.setCurrentIndex(0), self.search_input.setFocus()))
+        QShortcut(QKeySequence("F1"), self, self.show_shortcuts_dialog)
+        QShortcut(QKeySequence("?"), self, self.show_shortcuts_dialog)
+
+    def toggle_mute(self):
+        if self._is_muted:
+            self._is_muted = False
+            vol = self._pre_mute_volume if self._pre_mute_volume > 0 else 80
+            self.audio_output.setVolume(vol / 100.0)
+            self.volume_slider.setValue(vol)
+            self.btn_mute.setIcon(qta.icon("fa5s.volume-up", color="#EDEDED"))
+        else:
+            self._is_muted = True
+            self._pre_mute_volume = self.volume_slider.value()
+            self.audio_output.setVolume(0.0)
+            self.volume_slider.setValue(0)
+            self.btn_mute.setIcon(qta.icon("fa5s.volume-mute", color="#FF3B30"))
+
+    def show_shortcuts_dialog(self):
+        dlg = KeyboardShortcutsDialog(self)
+        dlg.exec()
+
+    def _pick_custom_color(self):
+        curr_hex = self.settings_manager.get('accentColor', '#C47D63')
+        color = QColorDialog.getColor(QColor(curr_hex), self, "Select DJ Console Accent Color")
+        if color.isValid():
+            hex_val = color.name()
+            self.settings_manager.set('accentColor', hex_val)
+            self.apply_theme()
+            if self.mini_player:
+                self.mini_player.set_accent_color(hex_val)
+            self.toast_manager.show_toast(f"Accent color updated: {hex_val}", toast_type="success")
+
+    def _on_density_changed(self, text):
+        mapping = {"Standard": "standard", "Compact (DJ Laptop)": "compact", "Comfortable": "comfortable"}
+        val = mapping.get(text, "standard")
+        self.settings_manager.set('density', val)
+        self.apply_theme()
+        self.refresh_library()
 
     def _seek_relative(self, seconds):
         dur = self.media_player.duration()
@@ -936,18 +1118,110 @@ class MainWindow(QMainWindow):
         if self.search_input.text().strip():
             return
         self.search_header_lbl.setText("TOP 10 TRENDING DJ COMMUNITY TRACKS TODAY")
-        thread = SearchThread(
-            "Beatport Top 10 Dance Electronic Club Bangers",
-            source=self.source_combo.currentText(),
-            duration_filter="Any Duration",
-            max_results=10,
-            ytdlp_path=self.settings_manager.get('ytdlpPath', 'yt-dlp'),
-            cookies_path=self.settings_manager.get('cookiesPath', '')
-        )
-        thread.results_ready.connect(self.on_search_results)
-        thread.error_occurred.connect(self.on_search_error)
-        thread.start()
-        self._running_threads.append(thread)
+        
+        trending_tracks = [
+            {
+                'id': 'lOtl4W_ZCu4',
+                'title': 'Mau P - Drugs From Amsterdam',
+                'artist': 'Mau P',
+                'duration': '5:24',
+                'durationSecs': 324,
+                'url': 'https://www.youtube.com/watch?v=lOtl4W_ZCu4',
+                'thumbnail': 'https://img.youtube.com/vi/lOtl4W_ZCu4/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'u31thuMehjM',
+                'title': 'FISHER - Losing It',
+                'artist': 'FISHER',
+                'duration': '4:09',
+                'durationSecs': 249,
+                'url': 'https://www.youtube.com/watch?v=u31thuMehjM',
+                'thumbnail': 'https://img.youtube.com/vi/u31thuMehjM/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': '5BqjhUmldDc',
+                'title': 'John Summit & Hayla - Where You Are',
+                'artist': 'John Summit & Hayla',
+                'duration': '3:56',
+                'durationSecs': 236,
+                'url': 'https://www.youtube.com/watch?v=5BqjhUmldDc',
+                'thumbnail': 'https://img.youtube.com/vi/5BqjhUmldDc/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'tyd-Vs0MHH4',
+                'title': 'Peggy Gou - (It Goes Like) Nanana',
+                'artist': 'Peggy Gou',
+                'duration': '6:08',
+                'durationSecs': 368,
+                'url': 'https://www.youtube.com/watch?v=tyd-Vs0MHH4',
+                'thumbnail': 'https://img.youtube.com/vi/tyd-Vs0MHH4/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'Q22MCFC0CP0',
+                'title': 'Fred again.. x Swedish House Mafia - Turn On The Lights again..',
+                'artist': 'Fred again..',
+                'duration': '4:25',
+                'durationSecs': 265,
+                'url': 'https://www.youtube.com/watch?v=Q22MCFC0CP0',
+                'thumbnail': 'https://img.youtube.com/vi/Q22MCFC0CP0/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'OvW5y3lZ7rc',
+                'title': 'MK, Dom Dolla - Rhyme Dust',
+                'artist': 'MK, Dom Dolla',
+                'duration': '3:02',
+                'durationSecs': 182,
+                'url': 'https://www.youtube.com/watch?v=OvW5y3lZ7rc',
+                'thumbnail': 'https://img.youtube.com/vi/OvW5y3lZ7rc/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'ahSdkFlepJg',
+                'title': 'Chris Lake ft. Alexis Roberts - Turn Off The Lights',
+                'artist': 'Chris Lake',
+                'duration': '3:33',
+                'durationSecs': 213,
+                'url': 'https://www.youtube.com/watch?v=ahSdkFlepJg',
+                'thumbnail': 'https://img.youtube.com/vi/ahSdkFlepJg/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'AthmfqjAtQE',
+                'title': 'Mochakk - Jealous',
+                'artist': 'Mochakk',
+                'duration': '4:17',
+                'durationSecs': 257,
+                'url': 'https://www.youtube.com/watch?v=AthmfqjAtQE',
+                'thumbnail': 'https://img.youtube.com/vi/AthmfqjAtQE/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': '4cCi6-16HR4',
+                'title': 'James Hype, Miggy Dela Rosa - Ferrari',
+                'artist': 'James Hype',
+                'duration': '3:06',
+                'durationSecs': 186,
+                'url': 'https://www.youtube.com/watch?v=4cCi6-16HR4',
+                'thumbnail': 'https://img.youtube.com/vi/4cCi6-16HR4/hqdefault.jpg',
+                'source': 'YouTube'
+            },
+            {
+                'id': 'o5PVzsGRbm8',
+                'title': 'CamelPhat & Elderbrook - Cola',
+                'artist': 'CamelPhat',
+                'duration': '3:44',
+                'durationSecs': 224,
+                'url': 'https://www.youtube.com/watch?v=o5PVzsGRbm8',
+                'thumbnail': 'https://img.youtube.com/vi/o5PVzsGRbm8/hqdefault.jpg',
+                'source': 'YouTube'
+            }
+        ]
+        self.on_search_results(trending_tracks)
 
     def perform_search(self):
         query = self.search_input.text().strip()
@@ -971,6 +1245,10 @@ class MainWindow(QMainWindow):
         thread.start()
         self._running_threads.append(thread)
 
+    def _on_thumb_downloaded(self, card, local_path):
+        if os.path.exists(local_path):
+            card.set_thumbnail(local_path)
+
     def on_search_results(self, results):
         while self.search_results_layout.count() > 1:
             item = self.search_results_layout.takeAt(0)
@@ -981,10 +1259,22 @@ class MainWindow(QMainWindow):
         for res in results:
             card = SearchResultCard(res, default_format=self.settings_manager.get('format', 'mp3'))
             card.download_requested.connect(self.start_download)
+            card.preview_requested.connect(self.preview_track)
             self.search_results_layout.insertWidget(self.search_results_layout.count() - 1, card)
-            # Track card by URL for download progress updates
             if res.get('url'):
                 self.search_cards[res['url']] = card
+
+            # Asynchronously download and set real thumbnail artwork
+            thumb_url = res.get('thumbnail')
+            vid_id = res.get('id') or (res.get('url', '').split('v=')[-1] if 'v=' in res.get('url', '') else '')
+            if thumb_url or vid_id:
+                t_loader = ThumbnailDownloader(vid_id, thumb_url, parent=self)
+                t_loader.downloaded.connect(lambda vid, path, c=card: self._on_thumb_downloaded(c, path))
+                t_loader.start()
+                self._running_threads.append(t_loader)
+                t_loader.downloaded.connect(lambda vid, path, c=card: self._on_thumb_downloaded(c, path))
+                t_loader.start()
+                self._running_threads.append(t_loader)
 
     def on_search_error(self, err_msg):
         self.toast_manager.show_toast(err_msg, toast_type="error")
@@ -1141,16 +1431,69 @@ class MainWindow(QMainWindow):
         if unanalyzed_count > 0 and not self._analysis_in_progress:
             self.start_library_analysis(force_all=False)
 
+    def _toggle_inspector(self):
+        if self.btn_toggle_inspector.isChecked():
+            self.track_inspector.show()
+        else:
+            self.track_inspector.hide()
+
+    def _on_track_item_clicked(self, item):
+        track = item.data(Qt.ItemDataRole.UserRole)
+        if track:
+            self.track_inspector.set_track(track)
+
+    def _open_single_tag_editor(self, file_path):
+        dlg = MetadataEditorDialog(file_path, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.refresh_library()
+
+    def reveal_in_explorer(self, file_path):
+        if sys.platform == 'win32' and os.path.exists(file_path):
+            subprocess.run(['explorer', '/select,', os.path.normpath(file_path)])
+
+    def _on_camelot_pill_clicked(self, key):
+        self.active_camelot_key = key
+        for k, btn in self.camelot_pill_buttons.items():
+            btn.setChecked(k == key)
+        self.filter_library()
+
+    def _on_format_chip_clicked(self, chip):
+        self.active_format_filter = chip
+        for c, btn in self.format_chip_buttons.items():
+            btn.setChecked(c == chip)
+        self.filter_library()
+
     def filter_library(self):
         self.track_list.clear()
         query = self.lib_search_input.text().lower()
         sort_by = self.lib_sort_combo.currentText()
         is_matching = self.btn_match_assistant.isChecked() and self.player_track is not None
 
-        filtered = [
-            t for t in self.library_tracks
-            if query in t['title'].lower() or query in t['artist'].lower()
-        ]
+        filtered = []
+        for t in self.library_tracks:
+            # Query match
+            if query and query not in t['title'].lower() and query not in t['artist'].lower():
+                continue
+            
+            # Camelot Key filter
+            if self.active_camelot_key != "ALL":
+                track_key = str(t.get('key', '')).strip().upper()
+                if track_key != self.active_camelot_key:
+                    continue
+
+            # Format/Status filter
+            if self.active_format_filter == "MP3" and t.get('format', '').lower() != 'mp3':
+                continue
+            elif self.active_format_filter == "WAV" and t.get('format', '').lower() != 'wav':
+                continue
+            elif self.active_format_filter == "FLAC" and t.get('format', '').lower() != 'flac':
+                continue
+            elif self.active_format_filter == "4★+" and t.get('rating', 0) < 4:
+                continue
+            elif self.active_format_filter == "Needs Analysis" and (t.get('bpm') and t.get('key')):
+                continue
+
+            filtered.append(t)
 
         matches_map = {}
         if is_matching:
@@ -1206,44 +1549,84 @@ class MainWindow(QMainWindow):
         return row
 
     def preview_track(self, track):
-        if not track or not os.path.exists(track['path']):
+        if not track:
             return
-        self.player_track = track
-        self.media_player.setSource(QUrl.fromLocalFile(track['path']))
-        self.media_player.play()
-        self.player_title_label.setText(track['title'])
-        self.player_artist_label.setText(track['artist'])
-        self.equalizer.set_playing(True)
 
-        # Update OBS Streamer Overlay
-        ObsOverlayWriter.update_now_playing(
-            track.get('title', ''),
-            track.get('artist', ''),
-            track.get('bpm', ''),
-            track.get('key', ''),
-            accent_color=self.settings_manager.get('accentColor', '#FF5500')
-        )
+        local_path = track.get('path')
+        if local_path and os.path.exists(local_path):
+            self.player_track = track
+            self.media_player.setSource(QUrl.fromLocalFile(local_path))
+            self.media_player.play()
+            self.player_title_label.setText(track.get('title', 'Unknown'))
+            self.player_artist_label.setText(track.get('artist', 'Unknown'))
+            self.equalizer.set_playing(True)
+            self.play_btn.setIcon(qta.icon("fa5s.pause", color="#FFFFFF"))
 
-        if self._glow_seq.state() != QSequentialAnimationGroup.State.Running:
-            self._glow_seq.start()
+            # Update OBS Streamer Overlay
+            ObsOverlayWriter.update_now_playing(
+                track.get('title', ''),
+                track.get('artist', ''),
+                track.get('bpm', ''),
+                track.get('key', ''),
+                accent_color=self.settings_manager.get('accentColor', '#FF5500')
+            )
 
-        if self.mini_player:
-            self.mini_player.update_track(track['title'], track['artist'], True)
+            if self._glow_seq.state() != QSequentialAnimationGroup.State.Running:
+                self._glow_seq.start()
 
-        if self.btn_match_assistant.isChecked():
-            self.filter_library()
+            if self.mini_player:
+                self.mini_player.update_track(track.get('title', ''), track.get('artist', ''), True)
 
-        cache_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'DJ Crate', 'waveforms')
-        wf_thread = WaveformGeneratorThread(
-            track['path'], cache_dir,
-            ffmpeg_path=self.settings_manager.get('ffmpegPath', 'ffmpeg'),
-            accent_color=self.settings_manager.get('accentColor', '#FF5500')
-        )
-        wf_thread.waveform_ready.connect(self.on_waveform_ready)
-        wf_thread.peaks_ready.connect(self.on_peaks_ready)
-        wf_thread.loudness_ready.connect(self.on_loudness_ready)
-        wf_thread.start()
-        self._running_threads.append(wf_thread)
+            if self.btn_match_assistant.isChecked():
+                self.filter_library()
+
+            cache_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'DJ Crate', 'waveforms')
+            wf_thread = WaveformGeneratorThread(
+                local_path, cache_dir,
+                ffmpeg_path=self.settings_manager.get('ffmpegPath', 'ffmpeg'),
+                accent_color=self.settings_manager.get('accentColor', '#FF5500')
+            )
+            wf_thread.waveform_ready.connect(self.on_waveform_ready)
+            wf_thread.peaks_ready.connect(self.on_peaks_ready)
+            wf_thread.loudness_ready.connect(self.on_loudness_ready)
+            wf_thread.start()
+            self._running_threads.append(wf_thread)
+            return
+
+        # If online / not downloaded track (has URL)
+        url = track.get('url')
+        if url:
+            self.player_track = track
+            self.player_title_label.setText(track.get('title', 'Buffering...'))
+            self.player_artist_label.setText(f"Streaming: {track.get('artist', 'Online')}")
+            self.equalizer.set_playing(True)
+            self.toast_manager.show_toast(f"Connecting audio stream for: {track.get('title', '')}...", toast_type="info")
+
+            resolver = StreamResolverThread(
+                track,
+                ytdlp_path=self.settings_manager.get('ytdlpPath', 'yt-dlp'),
+                cookies_path=self.settings_manager.get('cookiesPath', ''),
+                parent=self
+            )
+            resolver.stream_ready.connect(self._on_stream_ready)
+            resolver.error_occurred.connect(self._on_stream_error)
+            resolver.start()
+            self._running_threads.append(resolver)
+
+    def _on_stream_ready(self, track, stream_url):
+        if self.player_track and self.player_track.get('url') == track.get('url'):
+            self.media_player.setSource(QUrl(stream_url))
+            self.media_player.play()
+            self.play_btn.setIcon(qta.icon("fa5s.pause", color="#FFFFFF"))
+            self.equalizer.set_playing(True)
+            self.player_title_label.setText(track.get('title', 'Playing'))
+            self.player_artist_label.setText(track.get('artist', 'Online Stream'))
+            if self._glow_seq.state() != QSequentialAnimationGroup.State.Running:
+                self._glow_seq.start()
+
+    def _on_stream_error(self, err_msg):
+        self.equalizer.set_playing(False)
+        self.toast_manager.show_toast(err_msg, toast_type="error")
 
     def toggle_gig_matcher_overlay(self):
         if not self.gig_matcher:
