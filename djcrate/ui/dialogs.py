@@ -12,7 +12,7 @@ class SmartCrateDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Create Smart Crate")
-        self.setFixedSize(350, 160)
+        self.setFixedSize(400, 180)
         self.setStyleSheet("""
             QDialog { background-color: #1E1B1A; }
             QLineEdit, QComboBox { 
@@ -20,36 +20,41 @@ class SmartCrateDialog(QDialog):
                 color: #E8E3DF; 
                 border: 1px solid #2A2725; 
                 border-radius: 4px; 
-                padding: 4px;
+                padding: 6px;
+                font-weight: 600;
             }
             QPushButton {
                 background-color: #2A2725;
                 color: #E8E3DF;
                 border-radius: 4px;
-                padding: 6px 12px;
+                padding: 6px 14px;
+                font-weight: 600;
             }
             QPushButton:hover { background-color: #3B3633; }
         """)
         
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
         
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("Smart Crate Name")
+        self.name_input.setPlaceholderText("Smart Crate Name (e.g. 126+ Tech House, 8A Energy)")
         layout.addWidget(self.name_input)
         
         rule_layout = QHBoxLayout()
+        rule_layout.setSpacing(8)
         self.field_combo = QComboBox()
-        self.field_combo.addItems(["Title", "Artist", "Genre", "BPM"])
+        self.field_combo.addItems(["Title", "Artist", "Genre", "BPM", "Key", "Rating", "Year"])
+        self.field_combo.currentIndexChanged.connect(self._on_field_changed)
         
         self.op_combo = QComboBox()
-        self.op_combo.addItems(["contains", "=", ">=", "<="])
+        self.op_combo.addItems(["contains", "=", ">=", "<=", "compatible_with"])
         
         self.val_input = QLineEdit()
-        self.val_input.setPlaceholderText("Value")
+        self.val_input.setPlaceholderText("Value (e.g. 8A, 126, House)")
         
-        rule_layout.addWidget(self.field_combo)
-        rule_layout.addWidget(self.op_combo)
-        rule_layout.addWidget(self.val_input)
+        rule_layout.addWidget(self.field_combo, 2)
+        rule_layout.addWidget(self.op_combo, 2)
+        rule_layout.addWidget(self.val_input, 3)
         
         layout.addLayout(rule_layout)
         
@@ -57,6 +62,21 @@ class SmartCrateDialog(QDialog):
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)
+
+    def _on_field_changed(self, idx):
+        field = self.field_combo.currentText()
+        if field == "Key":
+            self.op_combo.setCurrentText("compatible_with")
+            self.val_input.setPlaceholderText("Camelot Key e.g. 8A")
+        elif field == "BPM":
+            self.op_combo.setCurrentText(">=")
+            self.val_input.setPlaceholderText("BPM value e.g. 126")
+        elif field == "Rating":
+            self.op_combo.setCurrentText(">=")
+            self.val_input.setPlaceholderText("Min Stars (1 to 5)")
+        else:
+            self.op_combo.setCurrentText("contains")
+            self.val_input.setPlaceholderText("Search keyword")
 
     def get_data(self):
         return {

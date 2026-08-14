@@ -1,14 +1,39 @@
-node_modules/
+# Build & distribution
 dist/
 build/
-*.log
-.env
+*.spec.bak
+
+# Python artifacts
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 .venv/
 venv/
+ENV/
+env/
+
+# IDE & editors
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# Local database & temp files
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Release notes/instructions (if private)
 RELEASE_INSTRUCTIONS.md

@@ -95,18 +95,16 @@ jobs:
 
             > _See the auto-generated release notes below for the full commit list._
 
-            ### ✨ v0.3.1 — Quality Pass
+            ### ✨ v0.3.2 — Harmonic Engine & Architecture Refinement
 
-            - **Fixed** clipboard HUD download crashing with `TypeError` (missing `duration` arg)
-            - **Fixed** Gig Matcher crashing on any library that had BPM data analysed
-            - **Fixed** Metadata Editor only guessing tags from filename — now reads actual embedded ID3/FLAC/MP4 tags
-            - **Fixed** pitch fader label showing `+5.0%` instead of `+5%`
-            - **Performance** Queue rows now update in-place instead of being destroyed and recreated on every download tick
-            - **UX** Clipboard HUD now slides in smoothly from the bottom-right corner (300ms ease-out)
-            - **UX** Gig Matcher results are now colour-coded by match quality (🟢 green / 🟡 yellow / 🔴 red)
-            - **UX** Clipboard downloads now log a meaningful title (e.g. `YouTube/dQw4w9WgXcQ`) instead of "Quick Capture Track"
-            - **DRY** Extracted shared helpers for track row creation, analysis thread launch, and context menu styling
-            - **Docs** Added module/class docstrings to all workers and companion widgets
+            - **Harmonic Mixing & Live Pitch Shift:** Real-time dynamic BPM and semitone musical key transposition as the preview pitch slider moves (-20% to +20%).
+            - **Expanded Smart Crates:** Rule-based smart crates now support harmonic key compatibility (`compatible_with`), BPM ranges, ratings, genres, and years.
+            - **Multi-Format Crate Exporters:** Export manual and smart crates to standard `.m3u8` with `#EXTINF` tags, `.csv` (for Serato, Rekordbox, and Excel), and clean formatted `.txt` tracklists.
+            - **Architecture & Database Layer:** Reunified `DatabaseManager` with pooled SQLAlchemy sessions, thread-safe connection cleanup, and full ORM compatibility.
+            - **Camelot Harmonic Color Badges:** Circle-of-fifths color coding for Camelot keys in the library and search views.
+            - **Live OBS Streamer Overlay:** Updated glassmorphic OBS overlay with dynamic live pitch-transposed BPM and key tags.
+            - **Automated Testing & Organization:** Reorganized workspace with dedicated `tests/` directory and 28 automated tests (100% passing).
+            - **Comprehensive Documentation:** Fully revamped professional open-source `README.md`.
 
             ---
 

@@ -1,6 +1,8 @@
 import os
 import sys
+import math
 import subprocess
+from typing import Any, Optional, Dict, Tuple, List
 from djcrate.logger import logger
 
 def check_dependency(cmd, name, install_url):
@@ -133,6 +135,15 @@ class CamelotMatcher:
 
     calculate_track_match(source_track, target_track) -> dict
         Rich result dict used by LibraryTrackRow match badges and filter_library sorting.
+
+    get_compatible_keys(key_str) -> dict
+        Dictionary of harmonically compatible keys mapped by relationship.
+
+    calculate_pitch_shifted_state(bpm, key_str, pitch_pct) -> dict
+        Calculates real-time effective tempo and transposed Camelot key under pitch adjustment.
+
+    get_camelot_color(key_str) -> str
+        Returns UI accent hex color code according to Camelot harmonic wheel position.
     """
     CAMELOT_WHEEL = [
         '1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B',
@@ -140,15 +151,128 @@ class CamelotMatcher:
         '9A', '9B', '10A', '10B', '11A', '11B', '12A', '12B'
     ]
 
+    CAMELOT_COLORS = {
+        1: '#00E5FF',   # 1A/1B (Aqua Cyan)
+        2: '#00B0FF',   # 2A/2B (Sky Blue)
+        3: '#2979FF',   # 3A/3B (Royal Blue)
+        4: '#651FFF',   # 4A/4B (Deep Purple)
+        5: '#AA00FF',   # 5A/5B (Purple)
+        6: '#F50057',   # 6A/6B (Magenta)
+        7: '#FF1744',   # 7A/7B (Red)
+        8: '#FF5252',   # 8A/8B (Coral Red)
+        9: '#FF9100',   # 9A/9B (Warm Orange)
+        10: '#FFD600',  # 10A/10B (Gold)
+        11: '#AEEA00',  # 11A/11B (Lime)
+        12: '#00E676',  # 12A/12B (Emerald Green)
+    }
+
     @staticmethod
     def parse_key(key_str: str) -> tuple:
         """Parses key string into (num: int, letter: str) e.g. '8A' -> (8, 'A')"""
         if not key_str:
             return None, None
-        key_str = key_str.strip().upper()
+        key_str = str(key_str).strip().upper()
         if len(key_str) >= 2 and key_str[:-1].isdigit() and key_str[-1] in ('A', 'B'):
-            return int(key_str[:-1]), key_str[-1]
+            num = int(key_str[:-1])
+            if 1 <= num <= 12:
+                return num, key_str[-1]
         return None, None
+
+    @classmethod
+    def get_camelot_color(cls, key_str: str) -> str:
+        """Returns standard hex color code for a Camelot key."""
+        n, _ = cls.parse_key(key_str)
+        if n and n in cls.CAMELOT_COLORS:
+            return cls.CAMELOT_COLORS[n]
+        return '#8A8580'
+
+    @classmethod
+    def get_compatible_keys(cls, key_str: str) -> dict:
+        """
+        Returns a dictionary of harmonic keys compatible with ``key_str``:
+        - exact: Same key (100%)
+        - relative: Relative major/minor (95%)
+        - energy_plus: +1 Camelot step (90%)
+        - energy_minus: -1 Camelot step (90%)
+        - energy_boost_plus: +7 steps (85%)
+        - energy_boost_minus: +5 steps (85%)
+        - diagonal_plus: +1 step opposite letter (85%)
+        - diagonal_minus: -1 step opposite letter (85%)
+        - all_keys: full list of compatible Camelot keys
+        """
+        n, l = cls.parse_key(key_str)
+        if not n or not l:
+            return {'all_keys': []}
+
+        opp_l = 'B' if l == 'A' else 'A'
+        plus_1 = 1 if n == 12 else n + 1
+        minus_1 = 12 if n == 1 else n - 1
+        boost_plus = ((n - 1 + 7) % 12) + 1
+        boost_minus = ((n - 1 + 5) % 12) + 1
+
+        res = {
+            'exact': f"{n}{l}",
+            'relative': f"{n}{opp_l}",
+            'energy_plus': f"{plus_1}{l}",
+            'energy_minus': f"{minus_1}{l}",
+            'energy_boost_plus': f"{boost_plus}{l}",
+            'energy_boost_minus': f"{boost_minus}{l}",
+            'diagonal_plus': f"{plus_1}{opp_l}",
+            'diagonal_minus': f"{minus_1}{opp_l}",
+        }
+        res['all_keys'] = [
+            res['exact'], res['relative'], res['energy_plus'], res['energy_minus'],
+            res['energy_boost_plus'], res['energy_boost_minus'],
+            res['diagonal_plus'], res['diagonal_minus']
+        ]
+        return res
+
+    @classmethod
+    def calculate_pitch_shifted_state(cls, bpm: Any, key_str: str, pitch_pct: float) -> dict:
+        """
+        Calculates live effective BPM and musical semitone key transposition
+        when adjusting the DJ pitch slider (-20% to +20%).
+        """
+        try:
+            b = float(bpm) if bpm and str(bpm).replace('.', '', 1).isdigit() else 0.0
+        except (ValueError, TypeError):
+            b = 0.0
+
+        rate = 1.0 + (pitch_pct / 100.0)
+        rate = max(0.01, rate)
+        
+        effective_bpm = round(b * rate, 1) if b > 0 else 0.0
+        bpm_diff = round(effective_bpm - b, 1) if b > 0 else 0.0
+
+        # Semitone shift = 12 * log2(rate)
+        semitones = 12.0 * math.log2(rate)
+        semitones_rounded = int(round(semitones))
+
+        n, l = cls.parse_key(key_str)
+        transposed_key = key_str
+        if n and l and semitones_rounded != 0:
+            # Shift by semitones: Each semitone = +7 Camelot steps (Circle of Fifths)
+            new_n = ((n - 1 + semitones_rounded * 7) % 12) + 1
+            transposed_key = f"{new_n}{l}"
+
+        sign = "+" if pitch_pct > 0 else ""
+        bpm_sign = "+" if bpm_diff > 0 else ""
+        
+        return {
+            'rate': rate,
+            'pitch_pct': pitch_pct,
+            'pitch_str': f"{sign}{pitch_pct:.1f}%",
+            'original_bpm': b,
+            'effective_bpm': effective_bpm,
+            'bpm_diff': bpm_diff,
+            'bpm_str': f"{effective_bpm:.1f} BPM" if effective_bpm > 0 else "",
+            'original_key': key_str,
+            'transposed_key': transposed_key,
+            'semitones': round(semitones, 2),
+            'semitones_rounded': semitones_rounded,
+            'is_transposed': (transposed_key != key_str and bool(key_str)),
+            'display_text': f"{effective_bpm:.1f} BPM ({bpm_sign}{bpm_diff:.1f})" if effective_bpm > 0 else f"{sign}{pitch_pct:.1f}%"
+        }
 
     @classmethod
     def calculate_key_match(cls, key1: str, key2: str) -> tuple:
@@ -242,7 +366,6 @@ class CamelotMatcher:
         bpm_score, bpm_label = cls.calculate_bpm_match(b1, b2)
 
         # Rating vibe bonus: 4-star adds 5% to score, 5-star adds 10%.
-        # Kept small so key+BPM compatibility always dominate the sort.
         rating = target_track.get('rating', 0)
         rating_bonus = 0.05 if rating == 4 else (0.10 if rating == 5 else 0.0)
 
@@ -277,21 +400,6 @@ class CamelotMatcher:
     def calculate_match_score(cls, key1: str, bpm1: str, key2: str, bpm2: str) -> tuple:
         """
         Compact entry point returning ``(score: int, key_quality: str, bpm_quality: str)``.
-
-        Designed for ``GigMatcherWidget`` and any caller that needs a flat percentage
-        without building full track dicts.
-
-        Parameters
-        ----------
-        key1, key2 : str
-            Camelot key strings, e.g. ``"8A"``.
-        bpm1, bpm2 : str
-            BPM values as strings (may be empty, which returns neutral scores).
-
-        Returns
-        -------
-        tuple of (int, str, str)
-            ``score`` is 0–100; ``key_quality`` and ``bpm_quality`` are human-readable labels.
         """
         key_score, key_quality = cls.calculate_key_match(key1, key2)
 
@@ -303,6 +411,5 @@ class CamelotMatcher:
 
         bpm_score, bpm_quality = cls.calculate_bpm_match(b1, b2)
 
-        # Same 50/40 weighting as calculate_track_match (no rating bonus here)
         total = min(100, int((key_score * 0.50 + bpm_score * 0.40) * 100))
         return total, key_quality, bpm_quality

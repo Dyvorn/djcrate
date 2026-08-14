@@ -16,6 +16,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtMultimedia import QMediaPlayer
 import qtawesome as qta
+from djcrate.utils import CamelotMatcher
 
 # ─── SoundCloud-Style Waveform Player Scrubber ─────────────────────────────
 
@@ -1017,7 +1018,8 @@ class LibraryTrackRow(QWidget):
         key_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         key_lbl.setFixedWidth(48)
         if key:
-            key_lbl.setStyleSheet("color: #00E5FF; background-color: rgba(0, 229, 255, 0.12); border: 1px solid rgba(0, 229, 255, 0.25); border-radius: 4px; padding: 2px 4px; font-size: 10px; font-weight: 700;")
+            key_color = CamelotMatcher.get_camelot_color(key)
+            key_lbl.setStyleSheet(f"color: {key_color}; background-color: rgba(255, 255, 255, 0.06); border: 1px solid {key_color}; border-radius: 4px; padding: 2px 4px; font-size: 10px; font-weight: 800;")
         else:
             key_lbl.setStyleSheet("color: #5C544D; font-size: 11px;")
         layout.addWidget(key_lbl)

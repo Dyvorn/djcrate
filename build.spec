@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# DJ Crate build.spec — PyInstaller configuration for v0.3.1
+# DJ Crate build.spec — PyInstaller configuration for v0.3.2
 # Generates a one-folder Windows executable bundled via COLLECT.
 # Inno Setup then wraps the dist/ folder into a single installer exe.
 
@@ -35,6 +35,7 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.QtMultimedia',
+        'sqlalchemy',
         'numpy',
         'scipy',
         'librosa',

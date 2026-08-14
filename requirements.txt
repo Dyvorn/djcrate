@@ -7,3 +7,5 @@ requests
 librosa
 numpy
 scipy
+sqlalchemy
+pytest

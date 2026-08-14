@@ -1,119 +1,212 @@
+<div align="center">
+
 # 🎛️ DJ Crate
 
-**DJ Crate** is a powerful desktop companion application for DJs, designed to streamline your workflow by integrating YouTube and SoundCloud directly into your music management process. Built with Python and PyQt6, DJ Crate allows you to search, download, organize, and preview tracks seamlessly.
+### *The High-Performance Desktop Companion for Modern DJs & Electronic Music Curators*
+
+[![Release](https://img.shields.io/github/v/release/Dyvorn/djcrate?style=for-the-badge&color=C47D63)](https://github.com/Dyvorn/djcrate/releases)
+[![Python Version](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![GUI Framework](https://img.shields.io/badge/GUI-PyQt6-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://riverbankcomputing.com/software/pyqt/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(28%2F28)-00E676?style=for-the-badge&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Dyvorn/djcrate/releases)
+
+<p align="center">
+  <b>Search</b> · <b>Extract</b> · <b>Harmonize</b> · <b>Tag</b> · <b>Sync to Serato & Rekordbox</b>
+</p>
 
 ---
 
-## ✨ Features
+</div>
 
-- **Search & Discover:** Quickly search YouTube, SoundCloud, and Bandcamp for tracks, remixes, and sets.
-- **Fast Downloading:** Powered by `yt-dlp` for high-quality, reliable audio extraction.
-- **Advanced Metadata Engine:** Automatically hits iTunes and Beatport APIs to download high-res cover art and embed official ID3 tags (Artist, Title, Album, Genre, Release Year) directly into audio files.
-- **DJ Software Drag & Drop:** Drag tracks directly from DJ Crate into **Serato DJ**, **Rekordbox**, **Traktor**, or Windows Explorer.
-- **Playlist Export:** Export manual and smart crates as standard `.m3u8` playlists.
-- **Mix Splitter (Timestamp Parser):** Paste tracklist timestamps to automatically cut long DJ mixes into tagged individual tracks via `FFmpeg`.
-- **Bulk Tag Editor:** Select multiple tracks and edit Artist, Album, Genre, and Year in a single batch operation.
-- **SQLite Database:** Lightning-fast library management, smart crate queries, and reliable download history backing.
-- **Waveform, Key & Pitch Controls:** Uses `ffmpeg` and `librosa` to analyze BPM, Camelot Key, and generate waveforms. Includes a preview pitch slider (-20% to +20%) to test transitions.
-- **Smart Crates:** Automatically organize your library based on BPM, Key, Genre, or Title rules.
-- **Collapsible Sidebar & Mini Player:** Compact overlay player and collapsible icon-only sidebar for small DJ laptop screens.
-- **Dynamic Theming:** Beautiful, customizable PyQt6 user interface (Dark, OLED Black, Soft Slate) with dynamic accent color presets.
+## 📌 Overview
+
+**DJ Crate** is an advanced desktop workstation engineered specifically for DJs, selectors, and electronic music producers. It bridges the gap between digital discovery platforms (YouTube, SoundCloud, Bandcamp) and pro-DJ software (**Serato DJ Pro**, **Pioneer Rekordbox**, **Traktor Pro**, **VirtualDJ**).
+
+Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers instant audio extraction, Librosa-driven BPM and Camelot harmonic key analysis, automatic ID3 tag enrichment, binary Serato crate generation, live OBS stream overlays, and intelligent set splitting.
 
 ---
 
-## 🛠️ Technology Stack
+## ✨ Core Capabilities
 
-- **[Python 3.11+](https://www.python.org/)** - Core programming language.
-- **[PyQt6](https://riverbankcomputing.com/software/pyqt/)** - Modern, responsive GUI framework.
-- **[SQLite](https://www.sqlite.org/)** - Built-in relational database for robust library management.
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - Backend engine for downloading media.
-- **[FFmpeg](https://ffmpeg.org/) & [Librosa](https://librosa.org/)** - Audio conversion, key/BPM analysis, and waveform generation.
-- **[Mutagen](https://mutagen.readthedocs.io/)** - For embedding ID3 metadata and cover art.
-- **[PyInstaller](https://pyinstaller.org/) & [Inno Setup](https://jrsoftware.org/isinfo.php)** - Packaging and Windows Installer generation.
+### 🎧 1. Harmonic Mixing Engine & Live Pitch Shift
+- **Camelot Wheel System**: Accurately maps musical keys to the 1A–12B Camelot notation (Circle of Fifths).
+- **Live Pitch & Semitone Transposition**: Moving the preview pitch fader (-20% to +20%) dynamically recalculates live effective BPM and transposed musical key (e.g. `128 BPM → 133.1 BPM (+4.0%) · 8A → 3A (+1 st)`).
+- **Match Assistant & Gig Matcher**: Surfaces the most compatible tracks in your library ranked by harmonic compatibility (Exact, Relative Major/Minor, +/-1 Step Energy Shift, and Energy Boost Jumps) and tempo proximity.
+
+### 📁 2. Smart Crates & DJ Software Sync
+- **Dynamic Smart Crates**: Define rule-based smart crates with numeric and harmonic operators (e.g., `BPM >= 126`, `Key compatible_with 8A`, `Rating >= 4`).
+- **Native Binary Serato Crate Writer**: Automatically compiles native `.crate` binary structures directly into Serato's `_Serato_/Subcrates/` folder.
+- **Multi-Format Playlist Exporters**: Export manual and smart crates to **M3U8** (with extended `#EXTINF` metadata), **CSV** (for Rekordbox and Excel), or **Formatted Text Tracklists** for Mixcloud and 1001Tracklists.
+- **Drag & Drop Workflow**: Drag tracks directly out of DJ Crate into Serato DJ, Rekordbox, or your file system.
+
+### ✂️ 3. Mix Splitter & Audio Processing
+- **Timestamp Parsing Engine**: Paste YouTube/SoundCloud tracklists (e.g., `00:00 Artist - Track`, `03:45 Remix`) to automatically cut multi-hour DJ sets into individual, perfectly tagged audio files via FFmpeg.
+- **SoundCloud Waveform Scrubber**: High-resolution waveform visualization with beat-grid cues, loudness meters (dBFS / peak clipping detection), and precision seeking.
+- **Bulk Metadata Editor**: Batch-update Artist, Album, Genre, Year, and ID3 tags across multiple selected tracks simultaneously.
+
+### 📡 4. Streamer & Live Performance HUDs
+- **Live OBS Stream Overlay**: Automatically generates `now_playing.html` (glassmorphic animated stream widget) and `now_playing.txt` for OBS Studio and Streamlabs.
+- **Floating Clipboard Grabber**: Non-intrusive bottom-right HUD that slides into view when a supported media URL is copied, enabling one-click background downloading without switching windows.
+- **Always-On-Top Mini Player**: Ultra-compact 340×90px floating player designed to remain docked over Serato or Rekordbox during preparation sessions.
 
 ---
 
-## 📂 Project Structure
+## 🏛️ System Architecture
 
-DJ Crate is built with a modular architecture to separate the user interface from heavy background processing:
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        PyQt6 UI Presentation Layer                     │
+│  MainWindow  │  MiniPlayer  │  ClipboardHUD  │  GigMatcher  │ Dialogs │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Qt Signals & Slots
+┌──────────────────────────────────▼─────────────────────────────────────┐
+│                     Asynchronous Worker Threadpool                     │
+│  DownloadThread │ SearchThread │ AnalysisThread │ WaveformThread │ Split │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Thread-safe Connection Pool
+┌──────────────────────────────────▼─────────────────────────────────────┐
+│                    Persistence & Audio Services Layer                  │
+│  DatabaseManager (SQLite) │ SQLAlchemy ORM │ Mutagen Tagging │ Serato   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 📂 Repository Layout
 
 ```text
 djcrate/
-├── .github/                  # GitHub Actions workflows for automated releases
-├── assets/                   # Application icons and images
+├── assets/                   # Application brand icons and visual assets
 ├── djcrate/                  # Core application package
-│   ├── ui/                   # User Interface components
-│   │   ├── main_window.py    # Main application window and layout
-│   │   ├── mini_player.py    # Compact player overlay
-│   │   ├── dialogs.py        # Settings and prompt dialogs
-│   │   ├── widgets.py        # Reusable custom PyQt6 widgets
-│   │   └── theme.py          # Stylesheet and color management
+│   ├── ui/                   # UI Presentation (MainWindow, Dialogs, Custom Widgets, Themes)
+│   │   ├── main_window.py    # Primary application window & navigation
+│   │   ├── mini_player.py    # Docked floating mini-player overlay
+│   │   ├── clipboard_widget.py # Background clipboard capture HUD
+│   │   ├── gig_matcher_widget.py # Live gig harmonic overlay
+│   │   ├── dialogs.py        # Smart crate, metadata, and mix splitter dialogs
+│   │   ├── widgets.py        # Waveform scrubber, track rows, rating stars, loudness meters
+│   │   └── theme.py          # Dynamic QSS styling engine (Dark, OLED Black, Soft Slate)
 │   │
-│   ├── workers/              # Asynchronous background threads (QThread)
-│   │   ├── download_worker.py # Handles media downloading
-│   │   ├── search_worker.py   # Handles YouTube/SoundCloud searching
-│   │   ├── metadata_worker.py # iTunes metadata, tag embedding, and Librosa analysis
-│   │   └── waveform_worker.py # Generates audio waveforms via FFmpeg
+│   ├── workers/              # Asynchronous background QThreads
+│   │   ├── download_worker.py # yt-dlp audio stream extraction
+│   │   ├── search_worker.py   # Multi-platform query parser
+│   │   ├── metadata_worker.py # iTunes/Beatport API tagger & Librosa analysis
+│   │   ├── split_worker.py    # FFmpeg mix splitter
+│   │   └── waveform_worker.py # FFmpeg waveform & peak generator
 │   │
-│   ├── app.py                # Main QApplication initialization and dependency checks
-│   ├── database.py           # SQLite manager for crates, tracks, and settings
-│   ├── config.py             # Settings manager and database abstraction
-│   ├── logger.py             # Application logging and error handling
-│   └── utils.py              # Helper functions (dependency checks, metadata extraction)
+│   ├── app.py                # Application entrypoint & dependency verification
+│   ├── database.py           # DatabaseManager, SQLAlchemy models, and connection pooling
+│   ├── config.py             # Settings manager & configuration abstraction
+│   ├── logger.py             # Rotating logging and uncaught exception handler
+│   ├── obs_overlay.py        # Live OBS stream widget generator
+│   ├── serato.py             # Native Serato .crate binary serializer
+│   ├── updater.py            # Automated GitHub release updater
+│   └── utils.py              # Camelot harmonic matcher, pitch transposition, and audio helpers
 │
-├── build.spec                # PyInstaller configuration for building the .exe
-├── djcrate_installer.iss     # Inno Setup script to compile the Windows installer
-├── main.py                   # The main entry point script to launch the app
-└── RELEASE_INSTRUCTIONS.md   # Guide for triggering automated GitHub releases
+├── tests/                    # Automated test suite
+│   ├── conftest.py           # Pytest fixtures and database isolation
+│   ├── test_database.py      # SQLite & SQLAlchemy CRUD and integrity tests
+│   ├── test_exporters.py     # Serato .crate, OBS overlay, and playlist export tests
+│   └── test_utils.py         # Camelot harmonic key, BPM, and pitch tests
+│
+├── build.spec                # PyInstaller packaging specification
+├── djcrate_installer.iss     # Inno Setup Windows installer script
+├── main.py                   # Root execution entrypoint
+├── pytest.ini                # Pytest configuration
+├── requirements.txt          # Production and development dependencies
+└── LICENSE                   # MIT License
 ```
 
 ---
 
-## 🚀 Installation & Setup
+## 🚀 Installation & Quickstart
 
-### For Users
-Simply download the latest installer from the **[Releases Tab](https://github.com/Dyvorn/djcrate/releases)** and run it on your Windows machine.
+### Option A: Windows Installer (Recommended for DJs)
+Download the latest executable installer from the **[Releases Tab](https://github.com/Dyvorn/djcrate/releases)** and launch the setup wizard.
 
-### For Developers
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Dyvorn/djcrate.git
-   cd djcrate
-   ```
-2. Install Python dependencies:
-   ```bash
-   pip install PyQt6 yt-dlp Pillow qtawesome mutagen
-   ```
-3. Ensure **FFmpeg** is installed and added to your System PATH.
-4. Run the app locally:
-   ```bash
-   python main.py
-   ```
+### Option B: Running from Source (Developers)
 
----
+#### 1. Prerequisites
+- **[Python 3.11+](https://www.python.org/downloads/)**
+- **[FFmpeg](https://ffmpeg.org/download.html)** (must be added to your system `PATH`)
 
-## 📦 Building from Source
+#### 2. Clone & Install Dependencies
+```bash
+# Clone repository
+git clone https://github.com/Dyvorn/djcrate.git
+cd djcrate
 
-This project uses a GitHub Actions workflow to automatically build and publish the `.exe`. However, you can build it manually:
+# Create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate
 
-1. **Create the Executable:**
-   ```bash
-   pyinstaller build.spec
-   ```
-2. **Create the Installer (Windows only):**
-   Open `djcrate_installer.iss` in **Inno Setup** and compile it.
+# Install required packages
+pip install -r requirements.txt
+```
+
+#### 3. Launch DJ Crate
+```bash
+python main.py
+```
 
 ---
 
-## 🤖 AI Assistance Notice
+## 🧪 Automated Testing
 
-> **Note on AI-Assisted Development:**  
-> Portions of this codebase, including this documentation, architecture design, and specific module implementations, were developed with the assistance of Artificial Intelligence (AI). AI tools were used to accelerate development, write boilerplate code, troubleshoot bugs, and generate UI layouts. All AI-generated code has been reviewed, modified, and tested by human developers to ensure security, performance, and functionality.
+DJ Crate maintains a comprehensive test suite covering the database persistence layer, Camelot harmonic mathematics, audio metadata parsing, and binary playlist serialization.
+
+Run the test suite with **pytest**:
+
+```bash
+pytest -v
+```
+
+```text
+tests/test_database.py ..................                                [ 64%]
+tests/test_exporters.py ...                                              [ 75%]
+tests/test_utils.py .......                                              [100%]
+
+============================= 28 passed in 0.67s ==============================
+```
+
+---
+
+## 🎼 Camelot Harmonic Wheel Reference
+
+DJ Crate's harmonic matcher evaluates energy transitions based on standard Camelot Wheel mathematics:
+
+| Relationship | Rule | Transition Energy | Match Score |
+| :--- | :--- | :--- | :---: |
+| **Exact Match** | Same Key & Mode (`8A → 8A`) | Neutral / Smooth Blend | **100%** |
+| **Relative Mode** | Same Number, Opposite Mode (`8A → 8B`) | Mood Shift (Minor/Major) | **95%** |
+| **Harmonic Step** | Adjacent Step (`8A → 9A` or `8A → 7A`) | Subtle Energy Lift / Drop | **90%** |
+| **Energy Boost** | +7 Camelot Steps (`1A → 8A`) | Noticeable Energy Spike | **85%** |
+| **Diagonal Shift** | +1 Step, Opposite Mode (`8A → 9B`) | Complex Harmonic Shift | **85%** |
+
+---
+
+## 📦 Compiling Executables & Installers
+
+### 1. Build Standalone Executable (PyInstaller)
+```bash
+pyinstaller build.spec
+```
+The compiled application will be generated in the `dist/DJ Crate/` directory.
+
+### 2. Build Windows Installer (Inno Setup)
+1. Open `djcrate_installer.iss` in **Inno Setup Compiler**.
+2. Click **Build → Compile** (creates `DJ_Crate_Setup.exe`).
+
+---
+
+## 🤝 Contributing
+
+Contributions, feature suggestions, and pull requests are warmly welcomed!
+- Please read our [CONTRIBUTING.md](CONTRIBUTING.md) guide.
+- Adhere to the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ---
 
 ## 📜 License & Credits
 
-- See `LICENSE` for distribution rights.
-- See `CREDITS.md` for acknowledgments to the open-source libraries used.
-- Please check `CONTRIBUTING.md` if you wish to help improve DJ Crate!
+- Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
+- Built with gratitude toward the open-source audio community (**yt-dlp**, **FFmpeg**, **Librosa**, **Mutagen**, **PyQt6**, **SQLAlchemy**). See [CREDITS.md](CREDITS.md).

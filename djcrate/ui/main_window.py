@@ -1420,6 +1420,26 @@ class MainWindow(QMainWindow):
         sign = "+" if val > 0 else ""
         self.pitch_val_lbl.setText(f"{sign}{val}%")
 
+        if self.player_track:
+            bpm = self.player_track.get('bpm', '')
+            key = self.player_track.get('key', '')
+            pitch_info = CamelotMatcher.calculate_pitch_shifted_state(bpm, key, val)
+            
+            base_artist = self.player_track.get('artist', '') or 'DJ Crate Audio Previewer'
+            if pitch_info.get('bpm_str') and val != 0:
+                transposed_badge = f" · {pitch_info['transposed_key']} ({pitch_info['semitones']:+.1f}st)" if pitch_info['is_transposed'] else (f" · Key {key}" if key else "")
+                self.player_artist_label.setText(f"{base_artist}  [{pitch_info['bpm_str']}{transposed_badge}]")
+            else:
+                self.player_artist_label.setText(base_artist)
+
+            ObsOverlayWriter.update_now_playing(
+                self.player_track.get('title', ''),
+                base_artist,
+                pitch_info.get('bpm_str', '').replace(' BPM', '') or bpm,
+                pitch_info.get('transposed_key', key),
+                accent_color=self.settings_manager.get('accentColor', '#FF5500')
+            )
+
     def _context_menu_style(self) -> str:
         """Return the shared QSS string for context menus."""
         return (
@@ -1442,26 +1462,69 @@ class MainWindow(QMainWindow):
             return
 
         crates = self.settings_manager.get('crates', {})
-        paths = crates.get(target_crate, [])
+        smart_crates = self.settings_manager.get('smartCrates', {})
+        paths = []
+        if target_crate in crates:
+            paths = crates.get(target_crate, [])
+        elif target_crate in smart_crates:
+            for i in range(self.crate_track_list.count()):
+                item = self.crate_track_list.item(i)
+                t = item.data(Qt.ItemDataRole.UserRole) if item else None
+                if t and t.get('path'):
+                    paths.append(t['path'])
+
         if not paths:
-            self.toast_manager.show_toast(f"Crate '{target_crate}' is empty.", toast_type="info")
+            self.toast_manager.show_toast(f"Crate '{target_crate}' has no tracks to export.", toast_type="info")
             return
 
         save_path, _ = QFileDialog.getSaveFileName(
-            self, f"Export Crate '{target_crate}'", f"{target_crate}.m3u8", "M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)"
+            self, f"Export Crate '{target_crate}'", f"{target_crate}.m3u8",
+            "M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u);;CSV Tracklist (*.csv);;Text Tracklist (*.txt)"
         )
         if save_path:
             try:
-                with open(save_path, 'w', encoding='utf-8') as f:
-                    f.write("#EXTM3U\n")
-                    for p in paths:
-                        if os.path.exists(p):
-                            t = self._find_library_track(p)
-                            title = t.get('title', os.path.basename(p)) if t else os.path.basename(p)
-                            artist = t.get('artist', 'Unknown') if t else 'Unknown'
-                            dur = t.get('durationSecs', 0) if t else 0
-                            f.write(f"#EXTINF:{int(dur)},{artist} - {title}\n")
-                            f.write(f"{os.path.abspath(p)}\n")
+                ext = os.path.splitext(save_path)[1].lower()
+                if ext == '.csv':
+                    import csv
+                    with open(save_path, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["#", "Title", "Artist", "BPM", "Key", "Duration", "Genre", "Year", "Path"])
+                        for idx, p in enumerate(paths, 1):
+                            t = self._find_library_track(p) or {}
+                            writer.writerow([
+                                idx,
+                                t.get('title', os.path.basename(p)),
+                                t.get('artist', 'Unknown Artist'),
+                                t.get('bpm', ''),
+                                t.get('key', ''),
+                                t.get('duration_str', ''),
+                                t.get('genre', ''),
+                                t.get('year', ''),
+                                os.path.abspath(p)
+                            ])
+                elif ext == '.txt':
+                    with open(save_path, 'w', encoding='utf-8') as f:
+                        f.write(f"=== DJ Crate Tracklist: {target_crate} ===\n")
+                        f.write(f"Total Tracks: {len(paths)}\n\n")
+                        for idx, p in enumerate(paths, 1):
+                            t = self._find_library_track(p) or {}
+                            title = t.get('title', os.path.basename(p))
+                            artist = t.get('artist', 'Unknown Artist')
+                            bpm = f" [{t.get('bpm')} BPM]" if t.get('bpm') else ""
+                            key = f" [{t.get('key')}]" if t.get('key') else ""
+                            f.write(f"{idx:02d}. {artist} - {title}{bpm}{key}\n")
+                else:
+                    with open(save_path, 'w', encoding='utf-8') as f:
+                        f.write("#EXTM3U\n")
+                        for p in paths:
+                            if os.path.exists(p):
+                                t = self._find_library_track(p)
+                                title = t.get('title', os.path.basename(p)) if t else os.path.basename(p)
+                                artist = t.get('artist', 'Unknown') if t else 'Unknown'
+                                dur = t.get('durationSecs', 0) if t else 0
+                                f.write(f"#EXTINF:{int(dur)},{artist} - {title}\n")
+                                f.write(f"{os.path.abspath(p)}\n")
+
                 self.toast_manager.show_toast(f"Exported crate '{target_crate}' to {os.path.basename(save_path)}!", toast_type="success")
             except Exception as e:
                 self.toast_manager.show_toast(f"Failed to export playlist: {e}", toast_type="error")
@@ -1564,21 +1627,46 @@ class MainWindow(QMainWindow):
         self.crate_track_list.clear()
         smart_crates = self.settings_manager.get('smartCrates', {})
         rule = smart_crates.get(crate_name, {})
-        field = rule.get('field', '').lower()
-        op = rule.get('operator', 'contains')
-        val = rule.get('value', '').lower()
+        field = rule.get('field', '').lower().strip()
+        op = rule.get('operator', 'contains').strip()
+        val = str(rule.get('value', '')).lower().strip()
 
         for track in self.library_tracks:
-            track_val = str(track.get(field, '')).lower()
             match = False
-            if op == 'contains' and val in track_val:
-                match = True
-            elif op == '=' and track_val == val:
-                match = True
-            elif op == '>=' and track_val.isdigit() and val.isdigit() and int(track_val) >= int(val):
-                match = True
-            elif op == '<=' and track_val.isdigit() and val.isdigit() and int(track_val) <= int(val):
-                match = True
+            raw_track_val = track.get(field, '')
+            track_val = str(raw_track_val).lower().strip()
+
+            if op == 'compatible_with' or (field == 'key' and op == 'compatible_with'):
+                target_key = rule.get('value', '').strip().upper()
+                track_key = str(track.get('key', '')).strip().upper()
+                if track_key and target_key:
+                    compat = CamelotMatcher.get_compatible_keys(target_key)
+                    if track_key in compat.get('all_keys', []):
+                        match = True
+            elif op == 'contains':
+                if val in track_val:
+                    match = True
+            elif op == '=':
+                if track_val == val:
+                    match = True
+            elif op == '>=':
+                try:
+                    t_num = float(raw_track_val)
+                    v_num = float(val)
+                    if t_num >= v_num:
+                        match = True
+                except (ValueError, TypeError):
+                    if track_val >= val:
+                        match = True
+            elif op == '<=':
+                try:
+                    t_num = float(raw_track_val)
+                    v_num = float(val)
+                    if t_num <= v_num:
+                        match = True
+                except (ValueError, TypeError):
+                    if track_val <= val:
+                        match = True
 
             if match:
                 item = QListWidgetItem(self.crate_track_list)
