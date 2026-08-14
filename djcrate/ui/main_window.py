@@ -50,6 +50,7 @@ from djcrate.serato import SeratoCrateWriter
 from djcrate.obs_overlay import ObsOverlayWriter
 from djcrate.ui.clipboard_widget import ClipboardGrabberWidget, _derive_title_from_url
 from djcrate.ui.gig_matcher_widget import GigMatcherWidget
+from djcrate.ui.set_builder_widget import SetBuilderPage
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -204,6 +205,7 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(1120, 720)
+        self.toast_manager = ToastManager(self)
 
         central = QWidget()
         central.setObjectName("centralWidget")
@@ -248,14 +250,16 @@ class MainWindow(QMainWindow):
         self.btn_search = create_nav_btn("fa5s.search", "Search", 0)
         self.btn_library = create_nav_btn("fa5s.music", "Library", 1)
         self.btn_crates = create_nav_btn("fa5s.folder", "Crates", 2)
-        self.btn_queue = create_nav_btn("fa5s.list", "Queue", 3)
-        self.btn_settings = create_nav_btn("fa5s.cog", "Settings", 4)
+        self.btn_set_builder = create_nav_btn("fa5s.layer-group", "Set Builder", 3)
+        self.btn_queue = create_nav_btn("fa5s.list", "Queue", 4)
+        self.btn_settings = create_nav_btn("fa5s.cog", "Settings", 5)
 
         self.btn_search.setChecked(True)
 
         sb_layout.addWidget(self.btn_search)
         sb_layout.addWidget(self.btn_library)
         sb_layout.addWidget(self.btn_crates)
+        sb_layout.addWidget(self.btn_set_builder)
         sb_layout.addWidget(self.btn_queue)
         sb_layout.addStretch()
 
@@ -272,12 +276,16 @@ class MainWindow(QMainWindow):
         self.page_search = self._create_search_page()
         self.page_library = self._create_library_page()
         self.page_crates = self._create_crates_page()
+        self.page_set_builder = SetBuilderPage(self.settings_manager, parent=self)
+        self.page_set_builder.track_preview_requested.connect(self.preview_track)
+        self.page_set_builder.toast_requested.connect(self.toast_manager.show_toast)
         self.page_queue = self._create_queue_page()
         self.page_settings = self._create_settings_page()
 
         self.stacked_widget.addWidget(self.page_search)
         self.stacked_widget.addWidget(self.page_library)
         self.stacked_widget.addWidget(self.page_crates)
+        self.stacked_widget.addWidget(self.page_set_builder)
         self.stacked_widget.addWidget(self.page_queue)
         self.stacked_widget.addWidget(self.page_settings)
 
@@ -288,7 +296,6 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.player_bar)
 
         self.setCentralWidget(central)
-        self.toast_manager = ToastManager(self)
 
     def _create_search_page(self):
         page = QWidget()
@@ -988,6 +995,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+3"), self, lambda: self.stacked_widget.setCurrentIndex(2))
         QShortcut(QKeySequence("Ctrl+4"), self, lambda: self.stacked_widget.setCurrentIndex(3))
         QShortcut(QKeySequence("Ctrl+5"), self, lambda: self.stacked_widget.setCurrentIndex(4))
+        QShortcut(QKeySequence("Ctrl+6"), self, lambda: self.stacked_widget.setCurrentIndex(5))
         # Focus search & Help
         QShortcut(QKeySequence("Ctrl+F"), self, lambda: (self.stacked_widget.setCurrentIndex(0), self.search_input.setFocus()))
         QShortcut(QKeySequence("F1"), self, self.show_shortcuts_dialog)
@@ -1426,6 +1434,8 @@ class MainWindow(QMainWindow):
             f"{len(self.library_tracks)} tracks  ·  Total Duration: {total_secs // 60} mins  ·  {total_bytes / (1024*1024):.1f} MB"
         )
         self.filter_library()
+        if hasattr(self, 'page_set_builder'):
+            self.page_set_builder.set_library_tracks(self.library_tracks)
 
         # Auto-trigger background analysis for unanalyzed tracks
         if unanalyzed_count > 0 and not self._analysis_in_progress:
@@ -1741,6 +1751,7 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
         menu.setStyleSheet(self._context_menu_style())
+        add_to_setlist = menu.addAction("Add to Active Setlist")
         analyze_track = menu.addAction("Analyze BPM & Key Tags")
         edit_meta = menu.addAction("Edit Metadata Tags...")
         bulk_edit = None
@@ -1751,7 +1762,10 @@ class MainWindow(QMainWindow):
         delete = menu.addAction("Delete Track File")
 
         action = menu.exec(pos)
-        if action == analyze_track:
+        if action == add_to_setlist:
+            targets = selected_paths if selected_paths else [track['path']]
+            self.page_set_builder.add_tracks_to_setlist(targets)
+        elif action == analyze_track:
             targets = selected_paths if selected_paths else [track['path']]
             self._run_analysis_thread(targets)
         elif action == edit_meta:
@@ -1784,6 +1798,7 @@ class MainWindow(QMainWindow):
             self.btn_search.setText("")
             self.btn_library.setText("")
             self.btn_crates.setText("")
+            self.btn_set_builder.setText("")
             self.btn_queue.setText("")
             self.btn_settings.setText("")
             self.btn_mini_player.setText("")
@@ -1793,6 +1808,7 @@ class MainWindow(QMainWindow):
             self.btn_search.setText("  Search")
             self.btn_library.setText("  Library")
             self.btn_crates.setText("  Crates")
+            self.btn_set_builder.setText("  Set Builder")
             self.btn_queue.setText("  Queue")
             self.btn_settings.setText("  Settings")
             self.btn_mini_player.setText(" Mini Player")
@@ -2083,12 +2099,25 @@ class MainWindow(QMainWindow):
     def _show_crate_context_menu(self, crate_name, pos):
         menu = QMenu(self)
         menu.setStyleSheet(self._context_menu_style())
+        create_setlist_action = menu.addAction("Create Setlist from Crate...")
         serato_action = menu.addAction("Sync to Serato (.crate)...")
         export_action = menu.addAction("Export Crate to M3U Playlist...")
         rename_action = menu.addAction("Rename Crate")
         delete_action = menu.addAction("Delete Crate")
         action = menu.exec(pos)
-        if action == serato_action:
+        if action == create_setlist_action:
+            crates = self.settings_manager.get('crates', {})
+            paths = crates.get(crate_name, [])
+            if paths:
+                new_id = self.settings_manager.create_setlist(f"Set - {crate_name}")
+                self.settings_manager.set_setlist_tracks(new_id, paths)
+                self.page_set_builder.load_setlists()
+                self.page_set_builder.active_setlist_id = new_id
+                self.page_set_builder.refresh_active_setlist()
+                self.toast_manager.show_toast(f"Created setlist from crate '{crate_name}'!", toast_type="success")
+            else:
+                self.toast_manager.show_toast(f"Crate '{crate_name}' is empty.", toast_type="info")
+        elif action == serato_action:
             self.sync_crate_to_serato(crate_name)
         elif action == export_action:
             self.export_current_crate(crate_name)

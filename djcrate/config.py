@@ -138,3 +138,37 @@ class SettingsManager:
 
     def clear_history(self):
         self.db.clear_history()
+
+    # Setlists
+    def get_setlists(self):
+        return self.db.get_all_setlists()
+
+    def get_setlist(self, setlist_id):
+        return self.db.get_setlist(setlist_id)
+
+    def create_setlist(self, name, notes=""):
+        return self.db.create_setlist(name, notes)
+
+    def update_setlist(self, setlist_id, name=None, notes=None):
+        self.db.update_setlist(setlist_id, name, notes)
+
+    def delete_setlist(self, setlist_id):
+        return self.db.delete_setlist(setlist_id)
+
+    def duplicate_setlist(self, setlist_id, new_name):
+        return self.db.duplicate_setlist(setlist_id, new_name)
+
+    def set_setlist_tracks(self, setlist_id, track_paths):
+        self.db.set_setlist_tracks(setlist_id, track_paths)
+
+    def add_track_to_setlist(self, setlist_id, file_path, position=None, notes="", transition_type=""):
+        self.db.add_track_to_setlist(setlist_id, file_path, position, notes, transition_type)
+
+    def remove_track_from_setlist(self, setlist_id, position):
+        self.db.remove_track_from_setlist(setlist_id, position)
+
+    def reorder_setlist_track(self, setlist_id, old_pos, new_pos):
+        self.db.reorder_setlist_track(setlist_id, old_pos, new_pos)
+
+    def update_setlist_item(self, setlist_id, position, notes=None, transition_type=None):
+        self.db.update_setlist_item(setlist_id, position, notes, transition_type)

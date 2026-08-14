@@ -2,7 +2,7 @@
 ; Inno Setup 6+ configuration with custom wizard graphics, modern UI, and file associations.
 
 #define MyAppName "DJ Crate"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.5.0"
 #define MyAppPublisher "Dyvorn"
 #define MyAppURL "https://github.com/Dyvorn/djcrate"
 #define MyAppExeName "DJ Crate.exe"

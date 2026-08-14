@@ -110,6 +110,39 @@ class DJSessionHistory(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now())
 
+class Setlist(Base):
+    """
+    ORM Model representing a curated DJ setlist.
+    """
+    __tablename__ = "setlists"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    notes: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    
+    items: Mapped[List["SetlistItem"]] = relationship(
+        "SetlistItem", back_populates="setlist", cascade="all, delete-orphan", order_by="SetlistItem.position"
+    )
+
+class SetlistItem(Base):
+    """
+    ORM Model representing an ordered track within a DJ setlist.
+    """
+    __tablename__ = "setlist_items"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    setlist_id: Mapped[int] = mapped_column(ForeignKey("setlists.id", ondelete="CASCADE"), nullable=False)
+    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
+    transition_type: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="")
+    cue_in_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    cue_out_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    
+    setlist: Mapped["Setlist"] = relationship("Setlist", back_populates="items")
+
 # --- Database Initialization & Connection Pooling ---
 
 _engine_cache = {}
@@ -498,6 +531,32 @@ class DatabaseManager:
                 )
             ''')
             
+            # Setlists table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS setlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    notes TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Setlist Items table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS setlist_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    setlist_id INTEGER NOT NULL,
+                    file_path TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    notes TEXT DEFAULT '',
+                    transition_type TEXT DEFAULT '',
+                    cue_in_sec REAL DEFAULT 0,
+                    cue_out_sec REAL DEFAULT 0,
+                    FOREIGN KEY(setlist_id) REFERENCES setlists(id) ON DELETE CASCADE
+                )
+            ''')
+            
             conn.commit()
 
     # Settings
@@ -639,6 +698,178 @@ class DatabaseManager:
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute("DELETE FROM download_history")
+            conn.commit()
+
+    # Setlists
+    def create_setlist(self, name: str, notes: str = "") -> int:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO setlists (name, notes) VALUES (?, ?)", (name.strip(), notes.strip() if notes else ""))
+            conn.commit()
+            return c.lastrowid
+
+    def get_all_setlists(self) -> list:
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("""
+                SELECT s.id, s.name, s.notes, s.created_at, s.updated_at,
+                       COUNT(si.id) as track_count,
+                       COALESCE(SUM(lt.duration), 0) as total_duration
+                FROM setlists s
+                LEFT JOIN setlist_items si ON s.id = si.setlist_id
+                LEFT JOIN local_tracks lt ON si.file_path = lt.file_path
+                GROUP BY s.id
+                ORDER BY s.updated_at DESC, s.id DESC
+            """)
+            return [dict(r) for r in c.fetchall()]
+
+    def get_setlist(self, setlist_id: int) -> Optional[dict]:
+        with self._get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM setlists WHERE id = ?", (setlist_id,))
+            s_row = c.fetchone()
+            if not s_row:
+                return None
+            res = dict(s_row)
+            c.execute("""
+                SELECT si.id as item_id, si.position, si.notes as item_notes,
+                       si.transition_type, si.cue_in_sec, si.cue_out_sec,
+                       lt.file_path, lt.title, lt.artist, lt.album, lt.bpm,
+                       lt.key, lt.rating, lt.genre, lt.year, lt.duration
+                FROM setlist_items si
+                LEFT JOIN local_tracks lt ON si.file_path = lt.file_path
+                WHERE si.setlist_id = ?
+                ORDER BY si.position ASC
+            """, (setlist_id,))
+            items = []
+            for r in c.fetchall():
+                d = dict(r)
+                if not d.get('title'):
+                    # Fallback title from filename
+                    d['title'] = os.path.splitext(os.path.basename(d['file_path']))[0] if d.get('file_path') else 'Unknown'
+                items.append(d)
+            res['items'] = items
+            return res
+
+    def update_setlist(self, setlist_id: int, name: Optional[str] = None, notes: Optional[str] = None) -> None:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if name is not None and notes is not None:
+                c.execute("UPDATE setlists SET name = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name.strip(), notes.strip(), setlist_id))
+            elif name is not None:
+                c.execute("UPDATE setlists SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name.strip(), setlist_id))
+            elif notes is not None:
+                c.execute("UPDATE setlists SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (notes.strip(), setlist_id))
+            conn.commit()
+
+    def delete_setlist(self, setlist_id: int) -> bool:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM setlist_items WHERE setlist_id = ?", (setlist_id,))
+            c.execute("DELETE FROM setlists WHERE id = ?", (setlist_id,))
+            conn.commit()
+            return c.rowcount > 0
+
+    def duplicate_setlist(self, setlist_id: int, new_name: str) -> Optional[int]:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT notes FROM setlists WHERE id = ?", (setlist_id,))
+            row = c.fetchone()
+            if not row:
+                return None
+            notes = row[0]
+            c.execute("INSERT INTO setlists (name, notes) VALUES (?, ?)", (new_name.strip(), notes))
+            new_id = c.lastrowid
+            c.execute("""
+                SELECT file_path, position, notes, transition_type, cue_in_sec, cue_out_sec
+                FROM setlist_items WHERE setlist_id = ? ORDER BY position ASC
+            """, (setlist_id,))
+            items = c.fetchall()
+            for item in items:
+                c.execute("""
+                    INSERT INTO setlist_items (setlist_id, file_path, position, notes, transition_type, cue_in_sec, cue_out_sec)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (new_id, item[0], item[1], item[2], item[3], item[4], item[5]))
+            conn.commit()
+            return new_id
+
+    def set_setlist_tracks(self, setlist_id: int, track_paths: list) -> None:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM setlist_items WHERE setlist_id = ?", (setlist_id,))
+            for pos, path in enumerate(track_paths):
+                c.execute("INSERT OR IGNORE INTO local_tracks (file_path) VALUES (?)", (path,))
+                c.execute("""
+                    INSERT INTO setlist_items (setlist_id, file_path, position)
+                    VALUES (?, ?, ?)
+                """, (setlist_id, path, pos))
+            c.execute("UPDATE setlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (setlist_id,))
+            conn.commit()
+
+    def add_track_to_setlist(self, setlist_id: int, file_path: str, position: Optional[int] = None, notes: str = "", transition_type: str = "") -> None:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("INSERT OR IGNORE INTO local_tracks (file_path) VALUES (?)", (file_path,))
+            if position is None:
+                c.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM setlist_items WHERE setlist_id = ?", (setlist_id,))
+                position = c.fetchone()[0]
+            else:
+                c.execute("UPDATE setlist_items SET position = position + 1 WHERE setlist_id = ? AND position >= ?", (setlist_id, position))
+            c.execute("""
+                INSERT INTO setlist_items (setlist_id, file_path, position, notes, transition_type)
+                VALUES (?, ?, ?, ?, ?)
+            """, (setlist_id, file_path, position, notes, transition_type))
+            c.execute("UPDATE setlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (setlist_id,))
+            conn.commit()
+
+    def remove_track_from_setlist(self, setlist_id: int, position: int) -> None:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM setlist_items WHERE setlist_id = ? AND position = ?", (setlist_id, position))
+            c.execute("UPDATE setlist_items SET position = position - 1 WHERE setlist_id = ? AND position > ?", (setlist_id, position))
+            c.execute("UPDATE setlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (setlist_id,))
+            conn.commit()
+
+    def reorder_setlist_track(self, setlist_id: int, old_pos: int, new_pos: int) -> None:
+        if old_pos == new_pos:
+            return
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM setlist_items WHERE setlist_id = ? AND position = ?", (setlist_id, old_pos))
+            target_row = c.fetchone()
+            if not target_row:
+                return
+            target_id = target_row[0]
+            
+            if old_pos < new_pos:
+                c.execute("""
+                    UPDATE setlist_items
+                    SET position = position - 1
+                    WHERE setlist_id = ? AND position > ? AND position <= ?
+                """, (setlist_id, old_pos, new_pos))
+            else:
+                c.execute("""
+                    UPDATE setlist_items
+                    SET position = position + 1
+                    WHERE setlist_id = ? AND position >= ? AND position < ?
+                """, (setlist_id, new_pos, old_pos))
+                
+            c.execute("UPDATE setlist_items SET position = ? WHERE id = ?", (new_pos, target_id))
+            c.execute("UPDATE setlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (setlist_id,))
+            conn.commit()
+
+    def update_setlist_item(self, setlist_id: int, position: int, notes: Optional[str] = None, transition_type: Optional[str] = None) -> None:
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            if notes is not None and transition_type is not None:
+                c.execute("UPDATE setlist_items SET notes = ?, transition_type = ? WHERE setlist_id = ? AND position = ?", (notes, transition_type, setlist_id, position))
+            elif notes is not None:
+                c.execute("UPDATE setlist_items SET notes = ? WHERE setlist_id = ? AND position = ?", (notes, setlist_id, position))
+            elif transition_type is not None:
+                c.execute("UPDATE setlist_items SET transition_type = ? WHERE setlist_id = ? AND position = ?", (transition_type, setlist_id, position))
+            c.execute("UPDATE setlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (setlist_id,))
             conn.commit()
 
 if __name__ == "__main__":

@@ -7,12 +7,12 @@
 [![Release](https://img.shields.io/github/v/release/Dyvorn/djcrate?style=for-the-badge&color=C47D63)](https://github.com/Dyvorn/djcrate/releases)
 [![Python Version](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![GUI Framework](https://img.shields.io/badge/GUI-PyQt6-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://riverbankcomputing.com/software/pyqt/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(28%2F28)-00E676?style=for-the-badge&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(37%2F37)-00E676?style=for-the-badge&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Dyvorn/djcrate/releases)
 
 <p align="center">
-  <b>Search</b> · <b>Extract</b> · <b>Harmonize</b> · <b>Tag</b> · <b>Sync to Serato & Rekordbox</b>
+  <b>Search</b> · <b>Extract</b> · <b>Harmonize</b> · <b>Setlist Planner</b> · <b>Tag</b> · <b>Sync to Serato & Rekordbox</b>
 </p>
 
 ---
@@ -23,19 +23,27 @@
 
 **DJ Crate** is an advanced desktop workstation engineered specifically for DJs, selectors, and electronic music producers. It bridges the gap between digital discovery platforms (YouTube, SoundCloud, Bandcamp) and pro-DJ software (**Serato DJ Pro**, **Pioneer Rekordbox**, **Traktor Pro**, **VirtualDJ**).
 
-Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers instant audio extraction, Librosa-driven BPM and Camelot harmonic key analysis, automatic ID3 tag enrichment, binary Serato crate generation, live OBS stream overlays, and intelligent set splitting.
+Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers instant audio extraction, Librosa-driven BPM and Camelot harmonic key analysis, automatic ID3 tag enrichment, binary Serato crate generation, harmonic setlist planning with real-time energy flow trajectory graphs, live OBS stream overlays, and intelligent set splitting.
 
 ---
 
 ## ✨ Core Capabilities
 
-### 🎛️ 1. Authentic Pro-Audio Workstation & Customization
+### 🎛️ 1. Harmonic Setlist Builder & Transition Planner *(NEW in v0.5.0)*
+- **Interactive Energy Flow & BPM Graph**: Real-time vector graph plotting your set's energy trajectory ($LOW \to MID \to PEAK$) and tempo progression with color-coded Camelot key nodes and transition links.
+- **Deep Transition Analysis**: Computes exact tempo pitch fader deltas (e.g. `+2.4% on Deck A`), non-master-tempo semitone transpositions, Camelot harmonic energy relationships, and key clash alerts.
+- **Transition Strategy Recommendations**: Tailored mixing technique suggestions for every consecutive pair (`Long Blend / EQ Swap`, `Bass Swap & Filter`, `Energy Boost Drop Cut`, `Echo Out Wash`).
+- **Auto-Harmonize Set**: 1-click intelligent nearest-harmonic neighbor algorithm to automatically arrange any track collection into an optimal Camelot wheel progression.
+- **Harmonic Next-Track Suggester**: Live side panel recommending the best harmonically compatible tracks from your library for the selected set position.
+- **Multi-Format Setlist Exporters**: Export full sets directly to **Serato Binary Crates** (`SET - [Name].crate`), **Rekordbox / M3U8 Playlists**, **CSV Spreadsheets**, **Timestamped Tracklists** (for 1001Tracklists & Mixcloud), or **Printable HTML Transition Cheat Sheets**.
+
+### 🎧 2. Authentic Pro-Audio Workstation & Customization
 - **Tactile Console Aesthetics**: Deep obsidian and matte charcoal theme (`#0E0E10`, `#16161A`, `#1E1E24`, `#26262E`) with 1px precision borders and clean typography without blurry AI neon glow.
 - **Custom Hex Color Picker & Hardware Presets**: Customize your console accent color to any hex value with live QSS theming, plus hardware presets (*Pioneer Blue, Technics Amber, Serato Red, Xone Slate, Emerald Green, Rust Amber*).
 - **Library Density Modes**: Tailor your workspace density for high-DPI screens or compact DJ laptop displays (*Standard*, *Compact*, *Comfortable*).
 - **Track Inspector Side Drawer**: Collapsible inspector displaying full ID3 metadata, Camelot keys, BPM, duration, format, file size, and quick actions (*Analyze, Edit Tags, Reveal in Explorer*).
 
-### 🎧 2. Harmonic Mixing Engine & Live Pitch Shift
+### 🎼 3. Harmonic Mixing Engine & Live Pitch Shift
 - **Camelot Quick-Filter Bar**: Scrollable strip of color-coded Camelot pills (`ALL`, `1A`–`12B`) to filter the library by key with one click.
 - **Format & Status Filter Chips**: Instant filter chips for `ALL`, `MP3`, `WAV`, `FLAC`, `4★+`, and `Needs Analysis`.
 - **Live Pitch & Semitone Transposition**: Moving the preview pitch fader (-20% to +20%) dynamically recalculates live effective BPM and transposed musical key (e.g. `128 BPM → 133.1 BPM (+4.0%) · 8A → 3A (+1 st)`).
@@ -43,18 +51,18 @@ Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers ins
 - **Interactive Hover Waveform Scrubber**: Dynamic hover time tooltip (`02:14`) tracking cursor position across the waveform with DJ quick jump (`-30s`, `-10s`, `+10s`, `+30s`) and pitch nudge (`-1%`, `+1%`) controls.
 - **Match Assistant & Gig Matcher**: Surfaces the most compatible tracks in your library ranked by harmonic compatibility (Exact, Relative Major/Minor, +/-1 Step Energy Shift, and Energy Boost Jumps) and tempo proximity.
 
-### 📁 3. Smart Crates & DJ Software Sync
+### 📁 4. Smart Crates & DJ Software Sync
 - **Dynamic Smart Crates**: Define rule-based smart crates with numeric and harmonic operators (e.g., `BPM >= 126`, `Key compatible_with 8A`, `Rating >= 4`).
 - **Native Binary Serato Crate Writer**: Automatically compiles native `.crate` binary structures directly into Serato's `_Serato_/Subcrates/` folder.
 - **Multi-Format Playlist Exporters**: Export manual and smart crates to **M3U8** (with extended `#EXTINF` metadata), **CSV** (for Rekordbox and Excel), or **Formatted Text Tracklists** for Mixcloud and 1001Tracklists.
 - **Drag & Drop Workflow**: Drag tracks directly out of DJ Crate into Serato DJ, Rekordbox, or your file system.
 
-### ✂️ 4. Mix Splitter & Audio Processing
+### ✂️ 5. Mix Splitter & Audio Processing
 - **Timestamp Parsing Engine**: Paste YouTube/SoundCloud tracklists (e.g., `00:00 Artist - Track`, `03:45 Remix`) to automatically cut multi-hour DJ sets into individual, perfectly tagged audio files via FFmpeg.
 - **SoundCloud Waveform Scrubber**: High-resolution waveform visualization with beat-grid cues, loudness meters (dBFS / peak clipping detection), and precision seeking.
 - **Bulk Metadata Editor**: Batch-update Artist, Album, Genre, Year, and ID3 tags across multiple selected tracks simultaneously.
 
-### 📡 5. Streamer & Live Performance HUDs
+### 📡 6. Streamer & Live Performance HUDs
 - **Live OBS Stream Overlay**: Automatically generates `now_playing.html` (glassmorphic animated stream widget) and `now_playing.txt` for OBS Studio and Streamlabs.
 - **Floating Clipboard Grabber**: Non-intrusive bottom-right HUD that slides into view when a supported media URL is copied, enabling one-click background downloading without switching windows.
 - **Always-On-Top Mini Player**: Ultra-compact 340×90px floating player designed to remain docked over Serato or Rekordbox during preparation sessions.
@@ -65,20 +73,20 @@ Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers ins
 ## 🏛️ System Architecture
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                        PyQt6 UI Presentation Layer                     │
-│  MainWindow  │  MiniPlayer  │  ClipboardHUD  │  GigMatcher  │ Dialogs │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │ Qt Signals & Slots
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│                     Asynchronous Worker Threadpool                     │
-│  DownloadThread │ SearchThread │ AnalysisThread │ WaveformThread │ Split │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │ Thread-safe Connection Pool
-┌──────────────────────────────────▼─────────────────────────────────────┐
-│                    Persistence & Audio Services Layer                  │
-│  DatabaseManager (SQLite) │ SQLAlchemy ORM │ Mutagen Tagging │ Serato   │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                           PyQt6 UI Presentation Layer                            │
+│  MainWindow  │  SetBuilderPage  │  MiniPlayer  │  ClipboardHUD  │  GigMatcher    │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │ Qt Signals & Slots
+┌────────────────────────────────────────▼─────────────────────────────────────────┐
+│                        Asynchronous Worker Threadpool                            │
+│  DownloadThread │ SearchThread │ AnalysisThread │ WaveformThread │ SplitWorker   │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │ Thread-safe Connection Pool
+┌────────────────────────────────────────▼─────────────────────────────────────────┐
+│                       Persistence & Audio Services Layer                         │
+│  DatabaseManager (SQLite) │ SQLAlchemy ORM │ Camelot Engine │ Serato Exporter   │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 📂 Repository Layout
@@ -87,8 +95,9 @@ Built on top of **PyQt6**, **SQLAlchemy**, and **yt-dlp**, DJ Crate delivers ins
 djcrate/
 ├── assets/                   # Application brand icons and visual assets
 ├── djcrate/                  # Core application package
-│   ├── ui/                   # UI Presentation (MainWindow, Dialogs, Custom Widgets, Themes)
+│   ├── ui/                   # UI Presentation (MainWindow, SetBuilder, Dialogs, Themes)
 │   │   ├── main_window.py    # Primary application window & navigation
+│   │   ├── set_builder_widget.py # Harmonic Setlist Builder & Energy Flow Graph
 │   │   ├── mini_player.py    # Docked floating mini-player overlay
 │   │   ├── clipboard_widget.py # Background clipboard capture HUD
 │   │   ├── gig_matcher_widget.py # Live gig harmonic overlay
@@ -104,18 +113,19 @@ djcrate/
 │   │   └── waveform_worker.py # FFmpeg waveform & peak generator
 │   │
 │   ├── app.py                # Application entrypoint & dependency verification
-│   ├── database.py           # DatabaseManager, SQLAlchemy models, and connection pooling
+│   ├── database.py           # DatabaseManager, Setlist models, and connection pooling
 │   ├── config.py             # Settings manager & configuration abstraction
 │   ├── logger.py             # Rotating logging and uncaught exception handler
 │   ├── obs_overlay.py        # Live OBS stream widget generator
 │   ├── serato.py             # Native Serato .crate binary serializer
 │   ├── updater.py            # Automated GitHub release updater
-│   └── utils.py              # Camelot harmonic matcher, pitch transposition, and audio helpers
+│   └── utils.py              # Camelot harmonic matcher, transition planner & pitch calculations
 │
 ├── tests/                    # Automated test suite
 │   ├── conftest.py           # Pytest fixtures and database isolation
 │   ├── test_database.py      # SQLite & SQLAlchemy CRUD and integrity tests
 │   ├── test_exporters.py     # Serato .crate, OBS overlay, and playlist export tests
+│   ├── test_set_builder.py   # Setlist CRUD, transitions, energy flow & harmonic tests
 │   └── test_utils.py         # Camelot harmonic key, BPM, and pitch tests
 │
 ├── build.spec                # PyInstaller packaging specification
