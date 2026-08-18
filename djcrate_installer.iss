@@ -2,14 +2,13 @@
 ; Inno Setup 6+ configuration with custom wizard graphics, modern UI, and file associations.
 
 #define MyAppName "DJ Crate"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "Dyvorn"
 #define MyAppURL "https://github.com/Dyvorn/djcrate"
 #define MyAppExeName "DJ Crate.exe"
-#define MyAppId "{D1C7A7E0-3B4F-4B8A-9A2E-8E7D1A2B3C4D}"
 
 [Setup]
-AppId={{#MyAppId}
+AppId={{D1C7A7E0-3B4F-4B8A-9A2E-8E7D1A2B3C4D}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} v{#MyAppVersion}
@@ -69,7 +68,7 @@ var
   sUnInstPath: String;
   sUnInstallString: String;
 begin
-  sUnInstPath := ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1');
+  sUnInstPath := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D1C7A7E0-3B4F-4B8A-9A2E-8E7D1A2B3C4D}_is1';
   sUnInstallString := '';
   
   // Check HKCU (64-bit then 32-bit view)

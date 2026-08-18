@@ -305,6 +305,11 @@ class MainWindow(QMainWindow):
         self.btn_mini_player.clicked.connect(self.toggle_mini_player)
         sb_layout.addWidget(self.btn_mini_player)
 
+        self.btn_logs = QPushButton("  App Logs")
+        self.btn_logs.setIcon(qta.icon("fa5s.file-alt", color="#A39E9A"))
+        self.btn_logs.clicked.connect(self.show_logs)
+        sb_layout.addWidget(self.btn_logs)
+
         sb_layout.addWidget(self.btn_settings)
         body_layout.addWidget(self.sidebar)
 
@@ -1334,6 +1339,7 @@ class MainWindow(QMainWindow):
         )
         dl_thread.progress.connect(self.on_download_progress)
         dl_thread.completed.connect(self.on_download_completed)
+        dl_thread.log_line.connect(lambda u, line: logger.debug(f"[yt-dlp] {line}"))
         dl_thread.finished.connect(lambda t=dl_thread: self._prune_thread(t))
         dl_thread.start()
         self._running_threads.append(dl_thread)
@@ -1839,6 +1845,7 @@ class MainWindow(QMainWindow):
             self.btn_queue.setText("")
             self.btn_settings.setText("")
             self.btn_mini_player.setText("")
+            self.btn_logs.setText("")
         else:
             self.sidebar.setFixedWidth(200)
             self.btn_toggle_sidebar.setIcon(qta.icon("fa5s.angle-double-left", color="#A39E9A"))
@@ -1849,6 +1856,18 @@ class MainWindow(QMainWindow):
             self.btn_queue.setText("  Queue")
             self.btn_settings.setText("  Settings")
             self.btn_mini_player.setText(" Mini Player")
+            self.btn_logs.setText("  App Logs")
+
+    def show_logs(self):
+        from djcrate.logger import log_path
+        try:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except Exception as e:
+            content = f"Could not read logs: {e}"
+        
+        dialog = LogDialog("Application Logs", content, parent=self)
+        dialog.exec()
 
     def on_pitch_changed(self, val):
         rate = 1.0 + (val / 100.0)

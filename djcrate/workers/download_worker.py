@@ -61,6 +61,7 @@ class DownloadThread(QThread):
             '-o', output_template,
             '--no-playlist',
             '--embed-metadata',
+            '--extractor-args', 'youtube:player_client=android',
         ]
         
         if self.ffmpeg_path != 'ffmpeg':
@@ -93,6 +94,7 @@ class DownloadThread(QThread):
             )
 
             final_path = None
+            last_error = ""
 
             while True:
                 if self.is_cancelled:
@@ -118,6 +120,9 @@ class DownloadThread(QThread):
                     self.progress.emit(self.url, pct, speed, eta)
                 
                 self.log_line.emit(self.url, line.strip())
+                
+                if 'ERROR:' in line:
+                    last_error = line.strip()
 
                 if '[ExtractAudio] Destination:' in line:
                     final_path = line.split('[ExtractAudio] Destination:')[1].strip()
@@ -142,6 +147,7 @@ class DownloadThread(QThread):
                 else:
                     self.completed.emit(self.url, False, "Could not determine downloaded file location")
             else:
-                self.completed.emit(self.url, False, "yt-dlp download failed")
+                err_msg = last_error if last_error else f"yt-dlp download failed (code {proc.returncode})"
+                self.completed.emit(self.url, False, err_msg)
         except Exception as e:
             self.completed.emit(self.url, False, str(e))
