@@ -11,8 +11,25 @@ from djcrate.logger import logger, exception_hook
 from djcrate.utils import check_dependency, show_dependency_warning
 from djcrate.ui.main_window import MainWindow
 
+_app_mutex = None
+
+def _acquire_app_mutex():
+    global _app_mutex
+    if sys.platform.startswith('win'):
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32 = ctypes.windll.kernel32
+            CreateMutex = kernel32.CreateMutexW
+            CreateMutex.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+            CreateMutex.restype = wintypes.HANDLE
+            _app_mutex = CreateMutex(None, False, "DJCrateAppMutex")
+        except Exception as e:
+            logger.debug(f"Could not initialize Windows AppMutex: {e}")
+
 def main():
     sys.excepthook = exception_hook
+    _acquire_app_mutex()
 
     app = QApplication(sys.argv)
     app.setApplicationName("DJ Crate")

@@ -1,6 +1,7 @@
 # Build & distribution
 dist/
 build/
+Releases/
 *.spec.bak
 
 # Python artifacts

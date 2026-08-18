@@ -45,7 +45,7 @@ from djcrate.workers import (
     SearchThread, ThumbnailDownloader, DownloadThread, StreamResolverThread,
     MetadataProbeThread, AnalysisThread, AutoTagThread, WaveformGeneratorThread, MixSplitterThread
 )
-from djcrate.updater import AutoUpdaterThread
+from djcrate.updater import AutoUpdaterThread, UpdateDownloaderThread, launch_installer_and_exit
 from djcrate.serato import SeratoCrateWriter
 from djcrate.obs_overlay import ObsOverlayWriter
 from djcrate.ui.clipboard_widget import ClipboardGrabberWidget, _derive_title_from_url
@@ -190,16 +190,53 @@ class MainWindow(QMainWindow):
         self.updater_thread.update_available.connect(self._on_update_available)
         self.updater_thread.start()
 
-    def _on_update_available(self, version, notes, url):
-        reply = QMessageBox.question(
-            self,
-            "Update Available",
-            f"A new version of DJ Crate ({version}) is available!\n\nWould you like to open the download page?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes
+    def _on_update_available(self, version, notes, url, installer_url=""):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Available")
+        msg.setText(f"<h3>A new version of DJ Crate ({version}) is available!</h3>")
+        informative_text = (
+            "Installing this update will seamlessly remove old application binaries while "
+            "safely preserving all your crates, cue points, playlists, metadata, and settings."
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        msg.setInformativeText(informative_text)
+        msg.setIcon(QMessageBox.Icon.Information)
+
+        btn_update = None
+        if installer_url:
+            btn_update = msg.addButton("⚡ Update Now", QMessageBox.ButtonRole.AcceptRole)
+        btn_page = msg.addButton("🌐 View Release", QMessageBox.ButtonRole.ActionRole)
+        btn_later = msg.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_update if btn_update else btn_page)
+
+        msg.exec()
+        clicked = msg.clickedButton()
+
+        if btn_update and clicked == btn_update:
+            self._start_update_download(installer_url, version)
+        elif clicked == btn_page:
             QDesktopServices.openUrl(QUrl(url))
+
+    def _start_update_download(self, installer_url: str, version: str):
+        self.toast_manager.show_toast(f"Downloading DJ Crate {version}...", "info", duration_ms=4000)
+        self.downloader_thread = UpdateDownloaderThread(installer_url, version=version, parent=self)
+
+        def on_progress(downloaded, total):
+            if total > 0:
+                pct = int((downloaded / total) * 100)
+                if pct % 25 == 0 and pct > 0 and pct < 100:
+                    self.toast_manager.show_toast(f"Downloading update: {pct}%", "info", duration_ms=1500)
+
+        def on_completed(dest_path):
+            self.toast_manager.show_toast("Download complete! Launching updater...", "success", duration_ms=3000)
+            launch_installer_and_exit(dest_path)
+
+        def on_failed(error_msg):
+            self.toast_manager.show_toast(f"Update download failed: {error_msg}", "error", duration_ms=5000)
+
+        self.downloader_thread.progress.connect(on_progress)
+        self.downloader_thread.download_completed.connect(on_completed)
+        self.downloader_thread.download_failed.connect(on_failed)
+        self.downloader_thread.start()
 
     def setup_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)

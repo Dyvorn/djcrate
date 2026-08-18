@@ -274,7 +274,7 @@ class LoadingSpinner(QWidget):
 class ToastNotification(QWidget):
     closed = pyqtSignal()
 
-    def __init__(self, message, toast_type="success", parent=None, action_label=None, action_callback=None):
+    def __init__(self, message, toast_type="success", parent=None, action_label=None, action_callback=None, duration_ms: int = 4500):
         super().__init__(parent)
         self.setFixedHeight(48)
         self.setMinimumWidth(300)
@@ -354,7 +354,7 @@ class ToastNotification(QWidget):
         self.dismiss_timer = QTimer(self)
         self.dismiss_timer.setSingleShot(True)
         self.dismiss_timer.timeout.connect(self.dismiss)
-        self.dismiss_timer.start(4500)
+        self.dismiss_timer.start(duration_ms)
 
         self.opacity_effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.opacity_effect)
@@ -388,8 +388,8 @@ class ToastManager:
         self.parent = parent_widget
         self.toasts = []
 
-    def show_toast(self, message, toast_type="success", action_label=None, action_callback=None):
-        toast = ToastNotification(message, toast_type, self.parent, action_label, action_callback)
+    def show_toast(self, message, toast_type="success", action_label=None, action_callback=None, duration_ms: int = 4500):
+        toast = ToastNotification(message, toast_type, self.parent, action_label, action_callback, duration_ms=duration_ms)
         toast.closed.connect(lambda t=toast: self._remove_toast(t))
         self.toasts.append(toast)
         toast.show()
